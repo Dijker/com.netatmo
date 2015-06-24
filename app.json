@@ -19,7 +19,8 @@
 		{
 			"id": "weatherstation",
 			"name": {
-				"en": "NetAtmo Weather Station"
+				"en": "NetAtmo Weather Station",
+				"en": "NetAtmo Weerstation"
 			},
 			"category": "climate",
 			"capabilities": [ "measure_temperature" ],
@@ -36,6 +37,30 @@
 				},
 				{
 					"id": "add_stations",
+					"template": "add_devices"
+				}
+			]
+		},
+		{
+			"id": "thermostat",
+			"name": {
+				"en": "NetAtmo Thermostat"
+			},
+			"category": "climate",
+			"capabilities": [ "measure_temperature" ],
+			"pair": [
+				{
+					"id": "start"
+				},
+				{
+					"id": "list_devices",
+					"template": "list_devices",
+					"navigation": {
+						"next": "add_thermostats"
+					}
+				},
+				{
+					"id": "add_thermostats",
 					"template": "add_devices"
 				}
 			]

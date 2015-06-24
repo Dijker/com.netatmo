@@ -7,8 +7,7 @@ var extend			= require('extend');
 
 var api_url			= 'https://api.netatmo.net';
 
-var client_id		= '54c3fa84485a88cc0867d14e';
-var client_secret	= 'hiVkuWXf7xfoJBGVh8Ld9M8nruClhkhVd4';
+var config			= require( path.join(Homey.paths.root, 'config.json') );
 
 var pairing			= {};
 
@@ -54,7 +53,7 @@ var self = {
 		start: function( callback, emit, data ){
 			
 			callback({
-				client_id: client_id
+				client_id: config.client_id
 			});
 						
 			Homey.log('NetAtmo pairing has started');
@@ -64,8 +63,8 @@ var self = {
 		authorized: function( callback, emit, data ) {
 			
 			var form = {
-				'client_id'		: client_id,
-				'client_secret'	: client_secret,
+				'client_id'		: config.client_id,
+				'client_secret'	: config.client_secret,
 				'code'			: data.code,
 				'redirect_uri'	: data.redirect_uri,
 				'grant_type'	: 'authorization_code',
@@ -155,8 +154,8 @@ function call( options, callback ) {
 			if( body.error.code == 2 ) {
 							
 				var form = {
-					'client_id'		: client_id,
-					'client_secret'	: client_secret,
+					'client_id'		: config.client_id,
+					'client_secret'	: config.client_secret,
 					'refresh_token'	: options.refresh_token,
 					'grant_type'	: 'refresh_token'
 				};
@@ -166,6 +165,8 @@ function call( options, callback ) {
 					json: true
 				}, function( err, response, body ){
 					if( body.error ) return callback( new Error("invalid refresh_token") );
+					
+					// retry the call with a new access token
 					options.access_token = body.access_token;
 					call( options, callback );
 				});
