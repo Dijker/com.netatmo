@@ -1,5 +1,7 @@
 "use strict";
 
+var querystring		= require('querystring');
+
 var request			= require('request');
 var extend			= require('extend');
 
@@ -20,7 +22,31 @@ var self = {
 	
 	name: {
 		set: function( device, name, callback ) {
-			console.log(arguments)
+			// NetAtmo doesn't allow names to be changed using the api. Too bad.
+		}
+	},
+	
+	"temperature.measure": {
+		get: function( device, name, callback ) {
+			var query = {
+				'device_id'	: device.id,
+				'scale'		: 'max',
+				'type'		: 'Temperature',
+				'date_end'	: 'last'
+			}
+			
+			call({
+				path: '/getmeasure?' + querystring.stringify(query),
+				refresh_token: device.refresh_token
+			}, function( err, result, body ){
+				
+				if( err ) return callback(err);
+				if( body.error ) return callback( new Error(body.error) );
+				
+				// TODO: cache this value
+				
+				callback(body.body[0].value[0]);
+			});
 		}
 	},
 	
@@ -72,7 +98,7 @@ var self = {
 						devices.push({
 							data: {
 								id				: device._id,
-								access_token	: pairing.access_token,
+//								access_token	: pairing.access_token,
 								refresh_token	: pairing.refresh_token
 							},
 							name: device.station_name
@@ -82,6 +108,8 @@ var self = {
 				}
 				
 				callback( devices );
+				
+				pairing = {};
 									
 			});
 							
@@ -121,16 +149,34 @@ function call( options, callback ) {
 				
 		if( err ) return callback( err );
 		
-		if( response.statusCode == 401 ) {
+		if( typeof body.error != 'undefined' ) {
 			
 			// token expired. refresh it!
-			console.log('refresh token!');
+			if( body.error.code == 2 ) {
+							
+				var form = {
+					'client_id'		: client_id,
+					'client_secret'	: client_secret,
+					'refresh_token'	: options.refresh_token,
+					'grant_type'	: 'refresh_token'
+				};
+								
+				request.post( api_url + '/oauth2/token', {
+					form: form,
+					json: true
+				}, function( err, response, body ){
+					if( body.error ) return callback( new Error("invalid refresh_token") );
+					options.access_token = body.access_token;
+					call( options, callback );
+				});
+			
+			}
 			
 			return;
 		}
 		
 		if( typeof callback == 'function' ) {
-			callback( null, response, body );
+			callback( err, response, body );
 		}
 		
 	});
