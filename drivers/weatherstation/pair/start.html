@@ -1,0 +1,58 @@
+<script type="text/javascript">
+Homey.setTitle('Log in to your NetAtmo account');
+
+Homey.emit('start');
+
+var client_id = '54c3fa84485a88cc0867d14e';
+var redirect_uri = window.location.href;
+var state = Math.random().toString(36).replace(/[^a-z]+/g, '');
+var scope = 'read_station';
+
+document.getElementById('oauth').src = 'https://api.netatmo.net/oauth2/authorize?client_id=' + client_id + '&redirect_uri=' + redirect_uri + '&scope=' + scope + '&state=' + state
+
+document.getElementById('oauth').onload = function(){
+	var queryString = document.getElementById('oauth').contentWindow.location.search;
+		queryString = queryString.substring(1);
+		queryString = parseQueryString( queryString );
+		
+	if( queryString.state != state ) {
+		alert('Oops... someone is trying to hijack your session!');
+		return;
+	}
+				
+	Homey.emit('authorized', {
+		code: queryString.code,
+		redirect_uri: redirect_uri
+	}, function( result ){
+		if( result === true ) {
+			Homey.addDevice({
+				data: {
+					id: ''
+				},
+				name: 'NetAtmo Weather Station'
+			}, function( result ){
+				Homey.done();				
+			});
+		} else {
+			alert('Something went wrong');
+		}
+	});
+}
+
+function parseQueryString( queryString ) {
+    var params = {}, queries, temp, i, l;
+ 
+    // Split into key/value pairs
+    queries = queryString.split("&");
+ 
+    // Convert the array of strings into an object
+    for ( i = 0, l = queries.length; i < l; i++ ) {
+        temp = queries[i].split('=');
+        params[temp[0]] = temp[1];
+    }
+ 
+    return params;
+};
+</script>
+
+<iframe id="oauth" width="100%" height="100%"></iframe>

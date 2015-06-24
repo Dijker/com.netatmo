@@ -1,0 +1,38 @@
+{
+	"id": "com.netatmo",
+	"version": "1.0",
+	"name": {
+		"en": "NetAtmo"
+	},
+	"description": {
+		"en": "Adds support for your NetAtmo devices"
+	},
+	"author": {
+		"name": "Emile Nijssen",
+		"website": "http://www.emilenijssen.nl"
+	},
+	"images": {
+		"large": "large.jpg",
+		"small": "small.jpg"
+	},
+	"drivers": [
+		{
+			"id": "weatherstation",
+			"name": {
+				"en": "NetAtmo Weather Station"
+			},
+			"category": "climate",
+			"capabilities": [ "measure_temperature" ],
+			"pair": [
+				{
+					"id": "start",
+					"navigation": {
+					}
+				}
+			]
+		}
+	],
+	"dependencies": {
+		"request": "*"
+	}
+}
