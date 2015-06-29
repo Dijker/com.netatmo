@@ -26,27 +26,29 @@ var self = {
 		}
 	},
 	
-	"temperature.measure": {
-		get: function( device, name, callback ) {
-			var query = {
-				'device_id'	: device.id,
-				'scale'		: 'max',
-				'type'		: 'Temperature',
-				'date_end'	: 'last'
+	capabilities: {
+		measure_temperature: {
+			get: function( device, name, callback ) {
+				var query = {
+					'device_id'	: device.id,
+					'scale'		: 'max',
+					'type'		: 'Temperature',
+					'date_end'	: 'last'
+				}
+				
+				call({
+					path: '/getmeasure?' + querystring.stringify(query),
+					refresh_token: device.refresh_token
+				}, function( err, result, body ){
+					
+					if( err ) return callback(err);
+					if( body.error ) return callback( new Error(body.error) );
+					
+					// TODO: cache this value
+					
+					callback(body.body[0].value[0]);
+				});
 			}
-			
-			call({
-				path: '/getmeasure?' + querystring.stringify(query),
-				refresh_token: device.refresh_token
-			}, function( err, result, body ){
-				
-				if( err ) return callback(err);
-				if( body.error ) return callback( new Error(body.error) );
-				
-				// TODO: cache this value
-				
-				callback(body.body[0].value[0]);
-			});
 		}
 	},
 	

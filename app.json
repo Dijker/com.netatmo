@@ -67,6 +67,7 @@
 		}
 	],
 	"dependencies": {
-		"request": "*"
+		"request": "*",
+		"extend": "*"
 	}
 }
