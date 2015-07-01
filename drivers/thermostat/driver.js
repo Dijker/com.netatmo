@@ -9,7 +9,7 @@ var api_url			= 'https://api.netatmo.net';
 
 var self = {
 	
-	init: function( callback ){
+	init: function( devices, callback ){
 		
 		// we're ready
 		callback();
