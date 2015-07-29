@@ -1,6 +1,7 @@
 {
 	"id": "com.netatmo",
-	"version": "1.0",
+	"version": "1.0.0",
+	"compatibility": "0.x || 1.x",
 	"name": {
 		"en": "NetAtmo"
 	},
@@ -12,8 +13,8 @@
 		"website": "http://www.emilenijssen.nl"
 	},
 	"images": {
-		"large": "large.jpg",
-		"small": "small.jpg"
+		"large": "assets/images/large.jpg",
+		"small": "assets/images/small.jpg"
 	},
 	"drivers": [
 		{
