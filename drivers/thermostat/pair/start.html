@@ -1,1 +1,31 @@
-TODO
+<script type="text/javascript">
+var auth_dialog;
+
+Homey.setTitle( __('pair.start.title') );
+
+Homey.emit('start');
+
+Homey.on('url', function( url ){
+	
+	var width	= 400;
+	var height	= 400;
+	var left	= (screen.width/2)-(width/2);
+	var top		= (screen.height/2)-(height/2);
+		
+	auth_dialog = window.open(url, "auth_dialog", "width=" + width + ", height=" + height + ", left=" + left + ", top=" + top + ", menubar=no, status=no, toolbar=no");
+})
+
+Homey.on('authorized', function( success, callback ){
+			
+	auth_dialog.close();
+	
+	if( success ) {
+		Homey.showView('list_devices');
+	} else {	
+		alert("Something went wrong!");
+		Homey.done();
+	}
+})
+</script>
+
+<iframe id="oauth" width="100%" height="100%"></iframe>

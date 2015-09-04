@@ -7,89 +7,134 @@ var request			= require('request');
 var extend			= require('extend');
 
 var api_url			= 'https://api.netatmo.net';
-
-var config			= require( path.join(Homey.paths.root, 'config.json') );
+var redirect_uri	= 'https://callback.athom.com/oauth2/callback/';
 
 var pairing			= {};
 
-var self = {
+var devices			= {};
 	
-	init: function( devices, callback ){
+var types_map = [
+	{
+		netatmo_name		: 'Temperature',
+		homey_capability	:  'measure_temperature'
+	},
+	{
+		netatmo_name		: 'Humidity',
+		homey_capability	:  'measure_humidity'
+	},
+	{
+		netatmo_name		: 'Co2',
+		homey_capability	:  'measure_co2'
+	},
+	{
+		netatmo_name		: 'Pressure',
+		homey_capability	:  'measure_pressure'
+	},
+	{
+		netatmo_name		: 'Noise',
+		homey_capability	:  'measure_noise'
+	},
+	{
+		netatmo_name		: 'Rain',
+		homey_capability	:  'measure_rain'
+	},
+	{
+		netatmo_name		: 'WindStrength',
+		homey_capability	:  'measure_wind_strength'
+	},
+	{
+		netatmo_name		: 'WindAngle',
+		homey_capability	:  'measure_wind_angle'
+	},
+	{
+		netatmo_name		: 'GustStrength',
+		homey_capability	:  'measure_gust_strength'
+	},
+	{
+		netatmo_name		: 'GustAngle',
+		homey_capability	:  'measure_gust_angle'
+	}
+]
+
+var self = module.exports = {
+	
+	init: function( devices_data, callback ){
+		
+		devices_data.forEach(function(device){			
+			devices[ device.id ] = device;
+			refreshState( device.id );
+		});
 		
 		// we're ready
 		callback();
 	},
 	
-	name: {
-		set: function( device, name, callback ) {
-			// NetAtmo doesn't allow names to be changed using the api. Too bad.
-		}
-	},
-	
 	capabilities: {
-		measure_temperature: {
-			get: function( device, name, callback ) {
-				var query = {
-					'device_id'	: device.id,
-					'scale'		: 'max',
-					'type'		: 'Temperature',
-					'date_end'	: 'last'
-				}
-				
-				call({
-					path: '/getmeasure?' + querystring.stringify(query),
-					refresh_token: device.refresh_token
-				}, function( err, result, body ){
-					
-					if( err ) return callback(err);
-					if( body.error ) return callback( new Error(body.error) );
-					
-					// TODO: cache this value
-					
-					callback(body.body[0].value[0]);
-				});
-			}
-		}
+		// below this is automatically generated
 	},
 	
 	pair: {
-		start: function( callback, emit, data ){
-			
-			callback({
-				client_id: config.client_id
-			});
-						
-			Homey.log('NetAtmo pairing has started');
-			
-		},
 		
-		authorized: function( callback, emit, data ) {
+		start: function( callback, emit, data ){
+						
+			Homey.log('NetAtmo pairing has started...');
 			
-			var form = {
-				'client_id'		: config.client_id,
-				'client_secret'	: config.client_secret,
-				'code'			: data.code,
-				'redirect_uri'	: data.redirect_uri,
-				'grant_type'	: 'authorization_code',
-				'scope'			: 'read_station'
-			};
+			// request an authorization url, and forward it to the front-end
+			Homey.manager('cloud').generateOAuth2Callback(
+				
+				// this is the app-specific authorize url
+				api_url + "/oauth2/authorize?response_type=code&client_id=" + Homey.env.client_id + "&redirect_uri=" + redirect_uri,
+				
+				// this function is executed when we got the url to redirect the user to
+				function( err, url ){
+					Homey.log('Got url!', url);
+					emit( 'url', url );
+				},
+				
+				// this function is executed when the authorization code is received (or failed to do so)
+				function( err, code ) {
+					
+					if( err ) {
+						Homey.error(err);
+						emit( 'authorized', false )
+						return;
+					}
+					
+					Homey.log('Got authorization code!', code);
+				
+					// swap the authorization code for a token					
+					request.post( api_url + '/oauth2/token', {
+						form: {
+							'client_id'		: Homey.env.client_id,
+							'client_secret'	: Homey.env.client_secret,
+							'code'			: code,
+							'redirect_uri'	: redirect_uri,
+							'grant_type'	: 'authorization_code',
+							'scope'			: 'read_station'
+						},
+						json: true
+					}, function( err, response, body ){
+						if( err || body.error ) {
+							Homey.error(err, body.error);
+							return emit( 'authorized', false );
+						}
+						pairing.access_token	= body.access_token;
+						pairing.refresh_token	= body.refresh_token;
+						emit( 'authorized', true );
+					});
+				}
+			)
 			
-			request.post( api_url + '/oauth2/token', {
-				form: form,
-				json: true
-			}, function( err, response, body ){
-				if( body.error ) return callback( false );	
-				pairing.access_token = body.access_token;
-				pairing.refresh_token = body.refresh_token;
-				callback( true );
-			});
 		},
 	
 		list_devices: function( callback, emit, data ) {
+			
+			// TODO: when no devices found
+			
 			call({
-				path: '/devicelist?app_type=app_station',
-				access_token: pairing.access_token,
-				refresh_token: pairing.refresh_token
+				path			: '/devicelist?app_type=app_station',
+				access_token	: pairing.access_token,
+				refresh_token	: pairing.refresh_token
 			}, function(err, response, body){
 				
 				var devices = [];
@@ -117,15 +162,19 @@ var self = {
 							
 		},
 		
-		add_devices: function( callback, emit, data ) {
+		add_device: function( callback, emit, device_data ) {
+			
+			devices[ device_data.id ] = device_data;
+			
 			console.log(arguments)
+			
 		}
 		
 	}
 }
 
 function call( options, callback ) {
-		
+			
 	// create the options object
 	options = extend({
 		path			: '/',
@@ -157,23 +206,25 @@ function call( options, callback ) {
 			if( body.error.code == 2 ) {
 							
 				var form = {
-					'client_id'		: config.client_id,
-					'client_secret'	: config.client_secret,
+					'client_id'		: Homey.env.client_id,
+					'client_secret'	: Homey.env.client_secret,
 					'refresh_token'	: options.refresh_token,
 					'grant_type'	: 'refresh_token'
 				};
-								
+							
 				request.post( api_url + '/oauth2/token', {
 					form: form,
 					json: true
 				}, function( err, response, body ){
-					if( body.error ) return callback( new Error("invalid refresh_token") );
+					if( err || body.error ) return callback( new Error("invalid refresh_token") );
 					
 					// retry the call with a new access token
 					options.access_token = body.access_token;
 					call( options, callback );
 				});
 			
+			} else {
+				return callback(body.error);
 			}
 			
 			return;
@@ -187,4 +238,60 @@ function call( options, callback ) {
 	
 }
 
-module.exports = self;
+// dynamically generate capability get functions #lazy
+types_map.forEach(function(type){
+		
+	self.capabilities[ type.homey_capability ] = {
+		get: function( device_data, callback ){		
+			var device = getDevice( device_data.id );
+			if( device instanceof Error ) return callback(device);				
+			if( typeof device.state == 'undefined' ) return callback( undefined );
+			return callback( device.state[ type.homey_capability ] );
+		}
+	}
+	
+});
+
+function getDevice( device_id ){
+	return devices[ device_id ] || new Error("Invalid device ID");
+}
+
+function refreshState( device_id, callback ){
+	
+	callback = callback || function(){}
+	
+	var device = devices[ device_id ];
+		
+	var query = {
+		'device_id'	: device_id,
+		'scale'		: 'max',
+		'type'		: [],
+		'date_end'	: 'last'
+	}
+	
+	var types = [];
+	types_map.forEach(function(type){
+		types.push(type.netatmo_name);
+	})
+	query.type = types.join(',');
+	
+	call({
+		path: '/getmeasure?' + querystring.stringify(query),
+		refresh_token: device.refresh_token
+	}, function( err, result, body ){
+		
+		if( err ) return callback(err);
+		if( body.error ) return callback( new Error(body.error) );
+		if( !Array.isArray(body.body[0].value) ) return callback( new Error("invalid body") );
+		if( !Array.isArray(body.body[0].value[0]) ) return callback( new Error("invalid body") );
+				
+		body.body[0].value[0].forEach(function(value, i){			
+			// set device state
+			devices[ device_id ].state = devices[ device_id ].state || {};
+			devices[ device_id ].state[ types_map[i].homey_capability ] = value;
+		});
+				
+		callback();
+		
+	});
+}
