@@ -1,6 +1,6 @@
 {
 	"id": "com.netatmo",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"compatibility": "0.x || 1.x",
 	"category": "climate",
 	"name": {
@@ -10,8 +10,8 @@
 		"en": "Adds support for your NetAtmo devices"
 	},
 	"author": {
-		"name": "Emile Nijssen",
-		"website": "http://www.emilenijssen.nl"
+		"name": "Athom B.V.",
+		"website": "https://www.athom.com"
 	},
 	"images": {
 		"large": "assets/images/large.jpg",
