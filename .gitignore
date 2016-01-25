@@ -3,4 +3,4 @@ userdata
 userconf.json
 
 # client id & secret
-config.json
+env.json
