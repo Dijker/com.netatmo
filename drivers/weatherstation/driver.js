@@ -1,15 +1,12 @@
 "use strict";
 
 var path			= require('path');
-var querystring		= require('querystring');
 
 var request			= require('request');
 var extend			= require('extend');
 
 var api_url			= 'https://api.netatmo.net';
 var redirect_uri	= 'https://callback.athom.com/oauth2/callback/';
-
-var pairing			= {};
 
 var devices			= {};
 	
@@ -60,10 +57,22 @@ var self = module.exports = {
 	
 	init: function( devices_data, callback ){
 		
-		devices_data.forEach(function(device){			
-			devices[ device.id ] = device;
-			refreshState( device.id );
+		devices_data.forEach(function(device_data){			
+			devices[ device_data.id ] = {
+				data 	: device_data,
+				state	: {}
+			}
+			refreshState( device_data.id );
 		});
+		
+		// update info every 5 minutes
+		setInterval(function(){
+			
+			for( var device_id in devices ) {
+				refreshState( device_id );
+			}
+			
+		}, 1000 * 60 * 5)
 		
 		// we're ready
 		callback();
@@ -73,9 +82,16 @@ var self = module.exports = {
 		// below this is automatically generated
 	},
 	
-	pair: {
+	deleted: function( device_data ) {
+		delete devices[ device_data.id ];
+	},
+	
+	pair: function( socket ) {
 		
-		start: function( callback, emit, data ){
+		var access_token;
+		var refresh_token;
+				
+		socket.on('start', function( data, callback ){
 						
 			Homey.log('NetAtmo pairing has started...');
 			
@@ -88,7 +104,7 @@ var self = module.exports = {
 				// this function is executed when we got the url to redirect the user to
 				function( err, url ){
 					Homey.log('Got url!', url);
-					emit( 'url', url );
+					socket.emit( 'url', url );
 				},
 				
 				// this function is executed when the authorization code is received (or failed to do so)
@@ -96,7 +112,7 @@ var self = module.exports = {
 					
 					if( err ) {
 						Homey.error(err);
-						emit( 'authorized', false )
+						socket.emit( 'authorized', false )
 						return;
 					}
 					
@@ -116,26 +132,25 @@ var self = module.exports = {
 					}, function( err, response, body ){
 						if( err || body.error ) {
 							Homey.error(err, body.error);
-							return emit( 'authorized', false );
+							return socket.emit( 'authorized', false );
 						}
-						pairing.access_token	= body.access_token;
-						pairing.refresh_token	= body.refresh_token;
-						emit( 'authorized', true );
+						access_token	= body.access_token;
+						refresh_token	= body.refresh_token;
+						socket.emit( 'authorized', true );
 					});
 				}
 			)
 			
-		},
+		})
 	
-		list_devices: function( callback, emit, data ) {
-			
-			// TODO: when no devices found
-			
+		socket.on('list_devices', function( data, callback ) {
+						
 			call({
 				path			: '/devicelist?app_type=app_station',
-				access_token	: pairing.access_token,
-				refresh_token	: pairing.refresh_token
+				access_token	: access_token,
+				refresh_token	: refresh_token
 			}, function(err, response, body){
+				if( err ) return callback( err, null );
 				
 				var devices = [];
 				
@@ -145,8 +160,8 @@ var self = module.exports = {
 						devices.push({
 							data: {
 								id				: device._id,
-//								access_token	: pairing.access_token,
-								refresh_token	: pairing.refresh_token
+								access_token	: access_token,
+								refresh_token	: refresh_token
 							},
 							name: device.station_name
 						});
@@ -154,21 +169,19 @@ var self = module.exports = {
 					
 				}
 				
-				callback( devices );
-				
-				pairing = {};
+				callback( null, devices );
 									
 			});
 							
-		},
+		})
 		
-		add_device: function( callback, emit, device_data ) {
-			
-			devices[ device_data.id ] = device_data;
-			
-			console.log(arguments)
-			
-		}
+		socket.on('add_device', function( device, callback ) {
+			devices[ device.data.id ] = {
+				data: device.data,
+				state: {}
+			}
+			refreshState( device.data.id );		
+		})
 		
 	}
 }
@@ -190,14 +203,14 @@ function call( options, callback ) {
 	
 	// make the request
 	request({
-		method: options.method,
-		url: api_url + '/api/' + options.path,
-		json: options.json,
-		headers: {
+		method	: options.method,
+		url		: api_url + '/api/' + options.path,
+		qs		: options.qs,
+		json	: options.json,
+		headers	: {
 			'Authorization': 'Bearer ' + options.access_token
 		}
 	}, function( err, response, body ){
-				
 		if( err ) return callback( err );
 		
 		if( typeof body.error != 'undefined' ) {
@@ -244,9 +257,8 @@ types_map.forEach(function(type){
 	self.capabilities[ type.homey_capability ] = {
 		get: function( device_data, callback ){		
 			var device = getDevice( device_data.id );
-			if( device instanceof Error ) return callback(device);				
-			if( typeof device.state == 'undefined' ) return callback( undefined );
-			return callback( device.state[ type.homey_capability ] );
+			if( device instanceof Error ) return callback(device);
+			return callback( null, device.state[ type.homey_capability ] );
 		}
 	}
 	
@@ -260,9 +272,10 @@ function refreshState( device_id, callback ){
 	
 	callback = callback || function(){}
 	
-	var device = devices[ device_id ];
-		
-	var query = {
+	var device = getDevice( device_id );
+	if( device instanceof Error ) return callback(device);	
+				
+	var qs = {
 		'device_id'	: device_id,
 		'scale'		: 'max',
 		'type'		: [],
@@ -273,25 +286,32 @@ function refreshState( device_id, callback ){
 	types_map.forEach(function(type){
 		types.push(type.netatmo_name);
 	})
-	query.type = types.join(',');
+	qs.type = types.join(',');
 	
 	call({
-		path: '/getmeasure?' + querystring.stringify(query),
-		refresh_token: device.refresh_token
+		path			: '/getmeasure',
+		qs				: qs,
+		access_token	: device.data.access_token,
+		refresh_token	: device.data.refresh_token
 	}, function( err, result, body ){
-		
 		if( err ) return callback(err);
 		if( body.error ) return callback( new Error(body.error) );
 		if( !Array.isArray(body.body[0].value) ) return callback( new Error("invalid body") );
 		if( !Array.isArray(body.body[0].value[0]) ) return callback( new Error("invalid body") );
 				
-		body.body[0].value[0].forEach(function(value, i){			
-			// set device state
-			devices[ device_id ].state = devices[ device_id ].state || {};
-			devices[ device_id ].state[ types_map[i].homey_capability ] = value;
+		body.body[0].value[0].forEach(function(value, i){
+			
+			var homey_capability = types_map[i].homey_capability;
+						
+			// set state and if changed, emit to Homey
+			if( device.state[ homey_capability ] != value ) {
+				devices[ device_id ].state[ homey_capability ] = value;
+				module.exports.realtime( device.data, homey_capability, value );
+			}		
+			
 		});
 				
-		callback();
+		callback( null, true );
 		
 	});
 }

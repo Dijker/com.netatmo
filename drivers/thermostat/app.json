@@ -1,0 +1,29 @@
+
+		{
+			"id": "thermostat",
+			"name": {
+				"en": "NetAtmo Thermostat"
+			},
+			"images": {
+				"large": "./drivers/thermostat/assets/images/large.png",
+				"small": "./drivers/thermostat/assets/images/small.png"
+			},
+			"class": "thermostat",
+			"capabilities": [ "target_temperature", "measure_temperature" ],
+			"pair": [
+				{
+					"id": "start"
+				},
+				{
+					"id": "list_devices",
+					"template": "list_devices",
+					"navigation": {
+						"next": "add_thermostats"
+					}
+				},
+				{
+					"id": "add_thermostats",
+					"template": "add_devices"
+				}
+			]
+		}
