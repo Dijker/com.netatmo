@@ -1,6 +1,6 @@
 {
 	"id": "com.netatmo",
-	"version": "1.0.3",
+	"version": "1.0.4",
 	"compatibility": "0.x || 1.x",
 	"category": "climate",
 	"name": {
