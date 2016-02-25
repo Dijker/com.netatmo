@@ -150,7 +150,7 @@ var self = module.exports = {
 				access_token	: access_token,
 				refresh_token	: refresh_token
 			}, function(err, response, body){
-				if( err ) return callback( err, null );
+				if( err ) return callback( err.message || err.toString(), null );
 				
 				var devices = [];
 				
@@ -168,7 +168,7 @@ var self = module.exports = {
 					});
 					
 				}
-				
+								
 				callback( null, devices );
 									
 			});
