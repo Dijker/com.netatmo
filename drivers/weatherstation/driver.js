@@ -1,9 +1,9 @@
 "use strict";
 
 var path			= require('path');
+var extend			= require('util')._extend;
 
 var request			= require('request');
-var extend			= require('extend');
 
 var api_url			= 'https://api.netatmo.net';
 var redirect_uri	= 'https://callback.athom.com/oauth2/callback/';
