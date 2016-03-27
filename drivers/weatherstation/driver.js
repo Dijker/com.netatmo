@@ -215,8 +215,26 @@ function call( options, callback ) {
 		
 		if( typeof body.error != 'undefined' ) {
 			
+			/*
+				Error codes (from https://dev.netatmo.com/doc/methods)
+			    1  : No access token given to the API
+			    2  : The access token is not valid
+			    3  : The access token has expired
+			    4  : Internal error
+			    5  : The application has been deactivated
+			    9  : The device has not been found
+			    10 : A mandatory API parameter is missing
+			    11 : An unexpected error occured
+			    13 : Operation not allowed
+			    15 : Installation of the device has not been finalized
+			    21 : Invalid argument
+			    25 : Invalid date given
+			    26 : Maximum usage of the API has been reached by application
+			    36 : Your parameter was rejected for safety reasons
+			    */
+			
 			// token expired. refresh it!
-			if( body.error.code == 2 ) {
+			if( body.error.code == 3 ) {
 							
 				var form = {
 					'client_id'		: Homey.env.CLIENT_ID,
