@@ -7,14 +7,13 @@ Homey.emit('start');
 
 Homey.on('url', function( url ){
 	Homey.popup(url);
-})
+});
 
 Homey.on('authorized', function( success, callback ){
-		
 	if( success ) {
 		Homey.showView('list_devices');
-	} else {	
-		Homey.alert("Something went wrong!", 'error');
+	} else {
+		Homey.alert('Something went wrong!', 'error');
 		Homey.done();
 	}
 })

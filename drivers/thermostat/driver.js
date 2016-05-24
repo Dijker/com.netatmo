@@ -1,19 +1,18 @@
-"use strict";
+'use strict';
 
-var querystring		= require('querystring');
+const querystring = require('querystring');
 
-var request			= require('request');
-var extend			= require('extend');
+const request = require('request');
+const extend = require('extend');
 
-var api_url			= 'https://api.netatmo.net';
+const API_URL = 'https://api.netatmo.net';
 
-var self = {
-	
-	init: function( devices, callback ){
-		
-		// we're ready
-		callback();
-	}
-}
+const self = {
+
+  init(devices, callback) {
+    // we're ready
+    callback();
+  },
+};
 
 module.exports = self;

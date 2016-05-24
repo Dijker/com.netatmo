@@ -1,7 +1,7 @@
 {
 	"id": "com.netatmo",
 	"version": "1.0.7",
-	"compatibility": "0.x || 1.x",
+	"compatibility": ">=0.8.30",
 	"category": "climate",
 	"name": {
 		"en": "NetAtmo"
@@ -22,7 +22,7 @@
 			"id": "weatherstation",
 			"name": {
 				"en": "NetAtmo Weather Station",
-				"en": "NetAtmo Weerstation"
+				"nl": "NetAtmo Weerstation"
 			},
 			"images": {
 				"large": "./drivers/weatherstation/assets/images/large.jpg",
