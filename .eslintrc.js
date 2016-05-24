@@ -92,7 +92,7 @@ module.exports = {
     // enforce one true brace style
     'brace-style': [2, '1tbs', { 'allowSingleLine': true }],
     // this option sets a specific tab width for your code
-    'indent': [2, 2, { 'SwitchCase': 1, 'VariableDeclarator': 1 }],
+    'indent': [2, 'tab', { 'SwitchCase': 1, 'VariableDeclarator': 1 }],
     // require or disallow space before blocks
     'space-before-blocks': 1,
     // require a space before & after certain keywords
