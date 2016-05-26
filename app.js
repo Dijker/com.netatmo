@@ -1,6 +1,6 @@
 'use strict';
 
-const Netatmo = require('netatmo');
+const Netatmo = require('netatmo-homey');
 
 module.exports.API_URL = 'https://api.netatmo.net';
 const REDIRECT_URI = module.exports.REDIRECT_URI = 'https://callback.athom.com/oauth2/callback/';
