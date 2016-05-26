@@ -91,6 +91,73 @@
       ]
     }
   ],
+  "flow": {
+    "actions": [
+      {
+        "id": "set_mode",
+        "title": {
+          "en": "Set Mode"
+        },
+        "args": [
+          {
+            "name": "device",
+            "type": "device",
+            "filter": "driver_id=thermostat"
+          },
+          {
+            "name": "mode",
+            "type": "dropdown",
+            "values": [
+              {
+                "id": "program",
+                "label": {
+                  "en": "Program"
+                }
+              },
+              {
+                "id": "away",
+                "label": {
+                  "en": "Away"
+                }
+              },
+              {
+                "id": "hg",
+                "label": {
+                  "en": "Frost Guard"
+                }
+              },
+              {
+                "id": "off",
+                "label": {
+                  "en": "Off"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "set_schedule",
+        "title": {
+          "en": "Set Program"
+        },
+        "args": [
+          {
+            "name": "device",
+            "type": "device",
+            "filter": "driver_id=thermostat"
+          },
+          {
+            "name": "schedule",
+            "type": "autocomplete",
+            "placeholder": {
+              "en": "My Program"
+            }
+          }
+        ]
+      }
+    ]
+  },
   "dependencies": {
     "request": "*",
     "extend": "*"

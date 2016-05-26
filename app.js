@@ -1,11 +1,10 @@
 'use strict';
 
-const request = require('request');
 const Netatmo = require('netatmo');
 
 module.exports.API_URL = 'https://api.netatmo.net';
 const REDIRECT_URI = module.exports.REDIRECT_URI = 'https://callback.athom.com/oauth2/callback/';
-const SCOPE = module.exports.SCOPE = 'read_station%20read_thermostat%20write_thermostat%20read_camera';
+const SCOPE = module.exports.SCOPE = 'read_station read_thermostat write_thermostat';
 
 const auth = {
 	client_id: Homey.env.CLIENT_ID,
@@ -15,20 +14,20 @@ const auth = {
 const api = module.exports.api = new Netatmo();
 
 module.exports.authenticated = false;
+api.on('access_token', accessToken => Homey.manager('settings').set('access_token', accessToken));
+api.on('refresh_token', refreshToken => Homey.manager('settings').set('refresh_token', refreshToken));
 api.on('authenticated', () => module.exports.authenticated = true);
 api.on('error', err => Homey.error(err, err.stack));
 
-module.exports.init = function () {
+module.exports.init = function init() {
 	const accessToken = Homey.manager('settings').get('access_token');
 	if (accessToken) {
 		const refreshToken = Homey.manager('settings').get('refresh_token');
 		api.authenticate(Object.assign({}, auth, { access_token: accessToken, refresh_token: refreshToken }));
-
-		api.getThermostatsData(Homey.log);
 	}
 };
 
-module.exports.authenticate = function (err, code) {
+module.exports.authenticate = function authenticate(err, code) {
 	return new Promise((resolve, reject) => {
 		if (err) {
 			reject(err);
@@ -38,15 +37,9 @@ module.exports.authenticate = function (err, code) {
 		module.exports.authenticated = false;
 		api.on('error', reject);
 
-		api.authenticate(Object.assign({}, auth, { code, redirect_uri: REDIRECT_URI, scope: SCOPE.replace(/%20/g, ' ') }),
-			response => {
-				Homey.manager('settings').set('access_token', response.access_token);
-				Homey.manager('settings').set('refresh_token', response.refresh_token);
-				if (response.expires_in) {
-					Homey.manager('settings').set('refresh_time', Date.now() + response.expires_in * 1000);
-				}
-				resolve();
-			}
+		api.authenticate(
+			Object.assign({}, auth, { code, redirect_uri: REDIRECT_URI, scope: SCOPE }),
+			resolve
 		);
 	});
 };

@@ -1,6 +1,5 @@
 'use strict';
 
-const path = require('path');
 const extend = require('util')._extend;
 
 const request = require('request');
@@ -84,7 +83,7 @@ const self = module.exports = {
 		let ACCESS_TOKEN;
 		let REFRESH_TOKEN;
 
-		socket.on('start', (data, callback) => {
+		socket.on('start', () => {
 			Homey.log('NetAtmo pairing has started...');
 
 			// request an authorization url, and forward it to the front-end
@@ -141,7 +140,7 @@ const self = module.exports = {
 			}, (err, response, body) => {
 				if (err) return callback(err.message || err.toString(), null);
 
-				const devices = [];
+				const deviceList = [];
 
 				if (typeof body.body !== 'undefined') {
 					body.body.devices.forEach(device => {
@@ -154,7 +153,7 @@ const self = module.exports = {
 							});
 						});
 
-						devices.push({
+						deviceList.push({
 							data: {
 								id: device._id,
 								access_token: ACCESS_TOKEN,
@@ -166,11 +165,11 @@ const self = module.exports = {
 					});
 				}
 
-				callback(null, devices);
+				callback(null, deviceList);
 			});
 		});
 
-		socket.on('add_device', (device, callback) => {
+		socket.on('add_device', (device) => {
 			devices[device.data.id] = {
 				data: device.data,
 				state: {},
@@ -274,7 +273,7 @@ function getDevice(deviceId) {
 }
 
 function refreshState(deviceId, callback) {
-	callback = callback || new Function();
+	callback = callback || (() => undefined);
 
 	const device = getDevice(deviceId);
 	if (device instanceof Error) return callback(device);

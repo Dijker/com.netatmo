@@ -1,26 +1,40 @@
 'use strict';
 
+const flow = require('./flow');
+
 const connectedDevices = {};
 const CAPABILITY_MAP = {
 	natherm1: [
 		{
 			id: 'measure_temperature',
+			capability_id: 'measure_temperature',
 			location: 'measured.temperature',
 		},
 		{
 			id: 'target_temperature',
-			location: 'setpoint.setpoint_temp',
-		}],
+			capability_id: 'target_temperature',
+			location: 'measured.setpoint_temp',
+		},
+		{
+			id: 'program_list',
+			location: 'therm_program_list',
+		},
+		{
+			id: 'mode',
+			location: 'setpoint.setpoint_mode',
+		},
+	],
 };
 
 function init(devices, callback) {
 	devices.forEach(device => connectedDevices[device.id] = Object.assign(device, { state: {} }));
 	refreshState();
+	flow.init(module.exports);
 	callback();
 }
 
 function pair(socket) {
-	socket.on('start', (data, callback) => {
+	socket.on('start', () => {
 		Homey.log('NetAtmo pairing has started...');
 
 		if (Homey.app.authenticated) {
@@ -31,7 +45,7 @@ function pair(socket) {
 		Homey.manager('cloud').generateOAuth2Callback(
 			// this is the app-specific authorize url
 			`${Homey.app.API_URL}/oauth2/authorize?response_type=code&client_id=` +
-			`${Homey.env.CLIENT_ID}&REDIRECT_URI=${Homey.app.REDIRECT_URI}&scope=${Homey.app.SCOPE}`,
+			`${Homey.env.CLIENT_ID}&REDIRECT_URI=${Homey.app.REDIRECT_URI}&scope=${Homey.app.SCOPE.replace(/ /g, '%20')}`,
 
 			// this function is executed when we got the url to redirect the user to
 			(err, url) => {
@@ -74,7 +88,9 @@ function pair(socket) {
 						if (CAPABILITY_MAP[module.type.toLowerCase()]) {
 							const capabilitieList = CAPABILITY_MAP[module.type.toLowerCase()];
 							capabilitieList.forEach(capability => {
-								capabilities.push(capability.id);
+								if (capability.capability_id) {
+									capabilities.push(capability.capability_id);
+								}
 								device.capabilityMap[capability.id] = module._id;
 							});
 						}
@@ -94,7 +110,7 @@ function pair(socket) {
 			});
 	});
 
-	socket.on('add_device', (device, callback) => {
+	socket.on('add_device', (device) => {
 		connectedDevices[device.data.id] = Object.assign(device.data, { state: {} });
 		if (devicesState) {
 			updateState(
@@ -152,26 +168,90 @@ function updateState(device, state) {
 }
 
 function getState(capability, deviceInfo, callback) {
-	if (connectedDevices[deviceInfo.id].state[capability] === undefined) {
+	if (!connectedDevices[deviceInfo.id] || connectedDevices[deviceInfo.id].state[capability] === undefined) {
 		refreshState(getState.bind(null, capability, deviceInfo, callback));
 	} else {
 		callback(null, connectedDevices[deviceInfo.id].state[capability]);
 	}
 }
 
-function setTemperature(capability, deviceInfo, state, callback) {
+function setTemperature(capability, deviceInfo, temperature, callback) {
+	const device = connectedDevices[deviceInfo.id];
+	setMode(capability, deviceInfo, 'manual', { endTime: Math.floor(Date.now() / 1000) + 2 * 60 * 60, temp: temperature },
+		err => {
+			callback(err, !err);
+
+			if (err) return Homey.error(err);
+
+			if (device.state[capability] !== temperature) {
+				device.state[capability] = temperature;
+				module.exports.realtime(device, capability, temperature);
+			}
+		}
+	);
+}
+
+function setMode(capability, deviceInfo, mode, options, callback) {
+	if (!callback) {
+		callback = options;
+		options = {};
+	}
+	options = options || {};
+
 	const device = connectedDevices[deviceInfo.id];
 	Homey.app.api.setThermpoint(
 		{
 			device_id: device.id,
 			module_id: device.capabilityMap[capability],
-			setpoint_mode: 'manual',
-			setpoint_endtime: Math.floor(Date.now() / 1000) + 2 * 60 * 60,
-			setpoint_temp: state,
+			setpoint_mode: mode,
+			setpoint_endtime: options.endTime,
+			setpoint_temp: options.temp,
 		},
-		(err, result) => {
-			Homey.log(err, result);
-			callback(err, result);
+		(err) => {
+			callback(err, !err);
+
+			if (err) return Homey.error(err);
+
+			if (device.state.mode !== mode) {
+				device.state.mode = mode;
+				module.exports.realtime(device, 'mode', mode);
+			}
+		}
+	);
+}
+
+function getSchedule(capability, deviceInfo, scheduleId, callback) {
+	if (!callback) {
+		callback = scheduleId;
+		scheduleId = null;
+	}
+
+	getState(capability, deviceInfo, (err, result) => {
+		if (err) return callback(err);
+
+		const program = result.find(prog => (scheduleId ? prog.program_id === scheduleId : prog.selected));
+		callback(!program, program);
+	});
+}
+
+function setSchedule(capability, deviceInfo, scheduleId, callback) {
+	const device = connectedDevices[deviceInfo.id];
+	getSchedule(capability, deviceInfo, scheduleId.program_id || scheduleId,
+		(err, schedule) => {
+			if (err) return callback('Could not find schedule');
+
+			Homey.app.api.switchSchedule(
+				{
+					device_id: device.id,
+					module_id: device.capabilityMap[capability],
+					schedule_id: schedule.program_id,
+				},
+				(err) => {
+					callback(err, !err);
+
+					if (err) return Homey.error(err);
+				}
+			);
 		}
 	);
 }
@@ -188,8 +268,16 @@ module.exports = {
 			get: getState.bind(null, 'target_temperature'),
 			set: setTemperature.bind(null, 'target_temperature'),
 		},
+		mode: {
+			get: getState.bind(null, 'mode'),
+			set: setMode.bind(null, 'mode'),
+		},
+		program_list: {
+			get: getState.bind(null, 'program_list'),
+		},
+		schedule: {
+			get: getSchedule.bind(null, 'program_list'),
+			set: setSchedule.bind(null, 'program_list'),
+		},
 	},
 };
-
-
-
