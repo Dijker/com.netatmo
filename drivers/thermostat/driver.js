@@ -29,6 +29,7 @@ const CAPABILITY_MAP = {
 function init(devices, callback) {
 	devices.forEach(device => connectedDevices[device.id] = Object.assign(device, { state: {} }));
 	flow.init(module.exports);
+	refreshState();
 	callback();
 }
 
@@ -142,7 +143,7 @@ function refreshState() {
 	clearTimeout(refreshTimeout);
 	refreshTimeout = setTimeout(refreshState, 5 * 60 * 1000);
 
-	return Promise.all(accountIds.map(accountId => refreshAccountState(accountId)));
+	return Promise.all(Array.from(accountIds).map(accountId => refreshAccountState(accountId)));
 }
 
 const refreshDebounce = {};
@@ -191,6 +192,7 @@ function refreshAccountState(accountId) {
 	}
 	return refreshDebounce[accountId];
 }
+
 function updateState(device, state) {
 	state.modules.forEach(deviceModule => {
 		CAPABILITY_MAP[deviceModule.type.toLowerCase()].forEach(capability => {
