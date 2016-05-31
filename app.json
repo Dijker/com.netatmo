@@ -176,6 +176,6 @@
 	},
 	"dependencies": {
 		"request": "*",
-		"extend": "*"
+		"netatmo-homey": "*"
 	}
 }
