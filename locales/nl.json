@@ -1,7 +1,11 @@
 {
 	"pair": {
 		"start": {
-			"title": "Log in op je NetAtmo account"
-		}
+			"title": "Selecteer of verbind een nieuwe NetAtmo account",
+			"login": "Log in op je account"
+		},
+		"add_account": "Voeg nieuwe account toe...",
+		"delete_account": "Verwijder deze account?",
+		"error": "Er is iets fout gegaan, probeer aub opnieuw."
 	}
 }

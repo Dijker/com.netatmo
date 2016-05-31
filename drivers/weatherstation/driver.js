@@ -1,317 +1,307 @@
 'use strict';
 
-const extend = require('util')._extend;
+const connectedDevices = {};
 
-const request = require('request');
+const CAPABILITY_MAP = {
+	temperature: [{
+		id: 'measure_temperature',
+		location: 'dashboard_data.Temperature',
+	}],
+	humidity: [{
+		id: 'measure_humidity',
+		location: 'dashboard_data.Humidity',
+	}],
+	co2: [{
+		id: 'measure_co2',
+		location: 'dashboard_data.CO2',
+	}],
+	pressure: [{
+		id: 'measure_pressure',
+		location: 'dashboard_data.Pressure',
+	}],
+	noise: [{
+		id: 'measure_noise',
+		location: 'dashboard_data.Noise',
+	}],
+	rain: [{
+		id: 'measure_rain',
+		location: 'dashboard_data.Rain',
+	}],
+	wind: [
+		{
+			id: 'measure_wind_strength',
+			location: 'dashboard_data.WindStrength',
+		},
+		{
+			id: 'measure_wind_angle',
+			location: 'dashboard_data.WindAngle',
+		},
+		{
+			id: 'measure_gust_strength',
+			location: 'dashboard_data.GustStrength',
+		},
+		{
+			id: 'measure_gust_angle',
+			location: 'dashboard_data.GustAngle',
+		},
+	],
+};
 
-const devices = {};
-
-const API_URL = 'https://api.netatmo.net';
-const REDIRECT_URI = 'https://callback.athom.com/oauth2/callback/';
-const TYPES_MAP = [
-	{
-		netatmo_name: 'Temperature',
-		homey_capability: 'measure_temperature',
-	},
-	{
-		netatmo_name: 'Humidity',
-		homey_capability: 'measure_humidity',
-	},
-	{
-		netatmo_name: 'CO2',
-		homey_capability: 'measure_co2',
-	},
-	{
-		netatmo_name: 'Pressure',
-		homey_capability: 'measure_pressure',
-	},
-	{
-		netatmo_name: 'Noise',
-		homey_capability: 'measure_noise',
-	},
-	{
-		netatmo_name: 'Rain',
-		homey_capability: 'measure_rain',
-	},
-	{
-		netatmo_name: 'WindStrength',
-		homey_capability: 'measure_wind_strength',
-	},
-	{
-		netatmo_name: 'WindAngle',
-		homey_capability: 'measure_wind_angle',
-	},
-	{
-		netatmo_name: 'GustStrength',
-		homey_capability: 'measure_gust_strength',
-	},
-	{
-		netatmo_name: 'GustAngle',
-		homey_capability: 'measure_gust_angle',
-	},
-];
-
-const self = module.exports = {
-
-	init(devicesData, callback) {
-		devicesData.forEach(deviceData => {
-			devices[deviceData.id] = {
-				data: deviceData,
-				state: {},
-			};
-			refreshState(deviceData.id);
-		});
-
-		// update info every 5 minutes
-		setInterval(() => {
-			Object.keys(devices).forEach(deviceId => refreshState(deviceId));
-		}, 1000 * 60 * 5);
-
+module.exports = {
+	init(deviceData, callback) {
+		deviceData.forEach(device => connectedDevices[device.id] = Object.assign(device, { state: {} }));
 		// we're ready
 		callback();
 	},
-
 	capabilities: {
 		// below this is automatically generated
 	},
-
-	deleted(deviceData) {
-		delete devices[deviceData.id];
+	deleted(deviceInfo) {
+		delete connectedDevices[deviceInfo.id];
 	},
-
 	pair(socket) {
-		let ACCESS_TOKEN;
-		let REFRESH_TOKEN;
+		let selectedAccountId;
 
 		socket.on('start', () => {
-			Homey.log('NetAtmo pairing has started...');
+			socket.emit('accounts', Homey.app.getAccountIds().map(id => ({ id, canLogout: Homey.app.canLogout(id) })));
 
 			// request an authorization url, and forward it to the front-end
 			Homey.manager('cloud').generateOAuth2Callback(
 				// this is the app-specific authorize url
-				`${API_URL}/oauth2/authorize?response_type=code&client_id=${Homey.env.CLIENT_ID}&REDIRECT_URI=${REDIRECT_URI}`,
+				`${Homey.app.API_URL}/oauth2/authorize?response_type=code&client_id=` +
+				`${Homey.env.CLIENT_ID}&REDIRECT_URI=${Homey.app.REDIRECT_URI}&scope=${Homey.app.SCOPE.replace(/ /g, '%20')}`,
 
 				// this function is executed when we got the url to redirect the user to
 				(err, url) => {
 					if (err) return;
-					Homey.log('Got url!', url);
+
 					socket.emit('url', url);
 				},
 
 				// this function is executed when the authorization code is received (or failed to do so)
 				(err, code) => {
-					if (err) {
-						Homey.error(err);
-						socket.emit('authorized', false);
-						return;
-					}
-
-					Homey.log('Got authorization code!', code);
-
-					// swap the authorization code for a token
-					request.post(`${API_URL}/oauth2/token`, {
-						form: {
-							client_id: Homey.env.CLIENT_ID,
-							client_secret: Homey.env.CLIENT_SECRET,
-							code,
-							redirect_uri: REDIRECT_URI,
-							grant_type: 'authorization_code',
-							scope: 'read_station',
-						},
-						json: true,
-					}, (err, response, body) => {
-						if (err || body.error) {
-							Homey.error(err, body.error);
-							return socket.emit('authorized', false);
-						}
-						ACCESS_TOKEN = body.access_token;
-						REFRESH_TOKEN = body.refresh_token;
+					Homey.app.authenticate(err, { code }).then((accountId) => {
+						selectedAccountId = accountId;
 						socket.emit('authorized', true);
+					}).catch(err => {
+						Homey.error(err);
+						return socket.emit('authorized', false);
 					});
 				}
 			);
+
+			socket.on('select_account', (accountId) => {
+				selectedAccountId = accountId;
+				socket.emit('authorized', true);
+			});
+
+			socket.on('logout', accountId => {
+				Homey.app.logout(accountId);
+			});
 		});
 
+		let devicesState;
 		socket.on('list_devices', (data, callback) => {
-			call({
-				path: '/devicelist?app_type=app_station',
-				access_token: ACCESS_TOKEN,
-				refresh_token: REFRESH_TOKEN,
-			}, (err, response, body) => {
-				if (err) return callback(err.message || err.toString(), null);
+			Homey.app.api[selectedAccountId].getStationsData((err, devices) => {
+				if (err) {
+					Homey.error(err);
+					return callback(err);
+				}
 
+				devicesState = devices;
 				const deviceList = [];
 
-				if (typeof body.body !== 'undefined') {
-					body.body.devices.forEach(device => {
+				// get station data
+				devices.forEach(device => {
+					if (!connectedDevices[device._id]) {
 						const capabilities = [];
+
 						device.data_type.forEach(dataTypeItem => {
-							TYPES_MAP.forEach(typeMap => {
-								if (typeMap.netatmo_name.toLowerCase() === dataTypeItem.toLowerCase()) {
-									capabilities.push(typeMap.homey_capability);
-								}
-							});
+							if (CAPABILITY_MAP[dataTypeItem.toLowerCase()]) {
+								CAPABILITY_MAP[dataTypeItem.toLowerCase()].forEach(capability => {
+									capabilities.push(capability.id);
+								});
+							}
 						});
 
 						deviceList.push({
+							name: device.station_name,
 							data: {
 								id: device._id,
-								access_token: ACCESS_TOKEN,
-								refresh_token: REFRESH_TOKEN,
+								deviceId: device._id,
+								accountId: selectedAccountId,
 							},
-							name: device.station_name,
 							capabilities,
 						});
-					});
-				}
+					}
+					// get module data
+					if (device.modules !== undefined) {
+						device.modules.forEach(module => {
+							if (connectedDevices[device._id + module._id]) return;
 
+							const capabilities = [];
+
+							module.data_type.forEach(dataTypeItem => {
+								if (CAPABILITY_MAP[dataTypeItem.toLowerCase()]) {
+									CAPABILITY_MAP[dataTypeItem.toLowerCase()].forEach(capability => {
+										capabilities.push(capability.id);
+									});
+								}
+							});
+
+							// push module to connectedDevices
+							deviceList.push({
+								name: `${device.station_name}:${module.module_name}`,
+								data: {
+									id: device._id + module._id, // create uniqueID based on station and module id
+									deviceId: device._id,
+									moduleId: module._id,
+									accountId: selectedAccountId,
+								},
+								capabilities,
+							});
+						});
+					}
+				});
 				callback(null, deviceList);
 			});
 		});
 
-		socket.on('add_device', (device) => {
-			devices[device.data.id] = {
-				data: device.data,
-				state: {},
-			};
-			refreshState(device.data.id);
+		socket.on('add_device', (device, callback) => {
+			connectedDevices[device.data.id] = Object.assign(device.data, { state: {} });
+			if (devicesState) {
+				let state = devicesState.find(deviceState => deviceState._id === device.data.deviceId);
+				if (device.data.moduleId) {
+					if (!(state && state.modules)) return refreshAccountState(device.data.accountId);
+					state = state.modules.find(moduleState => moduleState._id === device.data.moduleId);
+				}
+				if (state) {
+					updateState(
+						connectedDevices[device.data.id],
+						state
+					);
+				}
+			} else {
+				return refreshAccountState(device.data.accountId);
+			}
+			callback();
 		});
+	},
+	getConnectedDevicesForAccount(accountId) {
+		return Object.keys(connectedDevices).filter(deviceId => connectedDevices[deviceId].accountId === accountId);
 	},
 };
 
-function call(options, callback) {
-	// create the options object
-	options = extend({
-		path: '/',
-		method: 'GET',
-		access_token: false,
-		refresh_token: false,
-		json: true,
-	}, options);
-
-
-	// remove the first trailing slash, to prevent `.nl//foo`
-	if (options.path.charAt(0) === '/') options.path = options.path.substring(1);
-
-	// make the request
-	request({
-		method: options.method,
-		url: `${API_URL}/api/${options.path}`,
-		qs: options.qs,
-		json: options.json,
-		headers: {
-			Authorization: `Bearer ${options.access_token}`,
-		},
-	}, (err, response, body) => {
-		if (err) return callback(err);
-
-		if (typeof body.error !== 'undefined') {
-			/*
-			 Error codes: https://dev.netatmo.com/doc/methods
-			 1  : No access token given to the API
-			 2  : The access token is not valid
-			 3  : The access token has expired
-			 4  : Internal error
-			 5  : The application has been deactivated
-			 9  : The device has not been found
-			 10 : A mandatory API parameter is missing
-			 11 : An unexpected error occured
-			 13 : Operation not allowed
-			 15 : Installation of the device has not been finalized
-			 21 : Invalid argument
-			 25 : Invalid date given
-			 26 : Maximum usage of the API has been reached by application
-			 36 : Your parameter was rejected for safety reasons
-			 */
-
-			// token expired. refresh it!
-			if (body.error.code === 2 || body.error.code === 3) {
-				const form = {
-					client_id: Homey.env.CLIENT_ID,
-					client_secret: Homey.env.CLIENT_SECRET,
-					refresh_token: options.refresh_token,
-					grant_type: 'refresh_token',
-				};
-
-				request.post(`${API_URL}/oauth2/token`, {
-					form,
-					json: true,
-				}, (err, response, body) => {
-					if (err || body.error) return callback(new Error('invalid refresh_token'));
-
-					// retry the call with a new access token
-					options.access_token = body.access_token;
-					call(options, callback);
-				});
-			} else {
-				Homey.error(body.error);
-				return callback(body.error);
-			}
-
-			return;
+function getState(capability, deviceInfo, callback) {
+	if (!connectedDevices[deviceInfo.id] || connectedDevices[deviceInfo.id].state[capability] === undefined) {
+		if (
+			(connectedDevices[deviceInfo.id] && Object.keys(connectedDevices[deviceInfo.id].state).length) ||
+			(this && this.retries > 3)
+		) {
+			return callback(new Error('Could not get data for device'));
 		}
-
-		if (typeof callback === 'function') {
-			callback(err, response, body);
-		}
-	});
+		const self = this && this.retries ? this : { retries: 0 };
+		self.retries++;
+		refreshAccountState(deviceInfo.accountId)
+			.then(getState.bind(self, capability, deviceInfo, callback))
+			.catch(err => {
+				callback(err || true);
+			});
+	} else {
+		callback(null, connectedDevices[deviceInfo.id].state[capability]);
+	}
 }
 
-// dynamically generate capability get functions #lazy
-TYPES_MAP.forEach(type => {
-	self.capabilities[type.homey_capability] = {
-		get(deviceData, callback) {
-			const device = getDevice(deviceData.id);
-			if (device instanceof Error) return callback(device);
-			return callback(null, device.state[type.homey_capability]);
-		},
-	};
-});
-
-function getDevice(deviceId) {
-	return devices[deviceId] || new Error('Invalid device ID');
-}
-
-function refreshState(deviceId, callback) {
-	callback = callback || (() => undefined);
-
-	const device = getDevice(deviceId);
-	if (device instanceof Error) return callback(device);
-
-	const qs = {
-		device_id: deviceId,
-		scale: 'max',
-		type: [],
-		date_end: 'last',
-	};
-
-	const types = [];
-	TYPES_MAP.forEach(type => {
-		types.push(type.netatmo_name);
-	});
-	qs.type = types.join(',');
-
-	call({
-		path: '/getmeasure',
-		qs,
-		access_token: device.data.access_token,
-		refresh_token: device.data.refresh_token,
-	}, (err, result, body) => {
-		if (err) return callback(err);
-		if (body.error) return callback(new Error(body.error));
-		if (!Array.isArray(body.body[0].value)) return callback(new Error('invalid body'));
-		if (!Array.isArray(body.body[0].value[0])) return callback(new Error('invalid body'));
-
-		body.body[0].value[0].forEach((value, i) => {
-			const homeyCapability = TYPES_MAP[i].homey_capability;
-
-			// set state and if changed, emit to Homey
-			if (device.state[homeyCapability] !== value) {
-				devices[deviceId].state[homeyCapability] = value;
-				module.exports.realtime(device.data, homeyCapability, value);
+function updateState(device, state) {
+	state.data_type.forEach(dataType => {
+		CAPABILITY_MAP[dataType.toLowerCase()].forEach(capability => {
+			const value = capability.location.split('.').reduce(
+				(prev, curr) => prev.hasOwnProperty && prev.hasOwnProperty(curr) ? prev[curr] : { _notFound: true },
+				state
+			);
+			if (!value._notFound && device.state[capability.id] !== value) {
+				device.state[capability.id] = value;
+				module.exports.realtime(device, capability.id, value);
 			}
 		});
-
-		callback(null, true);
 	});
 }
+
+let refreshTimeout;
+function refreshState() {
+	const accountIds = new Set(Object.keys(connectedDevices).map(deviceId => connectedDevices[deviceId].accountId));
+	clearTimeout(refreshTimeout);
+	refreshTimeout = setTimeout(refreshState, 5 * 60 * 1000);
+
+	return Promise.all(accountIds.map(accountId => refreshAccountState(accountId)));
+}
+
+const refreshDebounce = {};
+const debounceTimeout = {};
+function refreshAccountState(accountId) {
+	if (!refreshDebounce[accountId] || (this && this.retries)) {
+		clearTimeout(debounceTimeout[accountId]);
+		debounceTimeout[accountId] = setTimeout(() => refreshDebounce[accountId] = null, 10000);
+		refreshDebounce[accountId] = new Promise((resolve, reject) => {
+			if (Homey.app.api[accountId] && Homey.app.api[accountId].authenticated) {
+				Homey.app.api[accountId].getStationsData((err, stations) => {
+					if (err) {
+						if (!(this && this.retries && this.retries > 3)) {
+							const self = this || { retries: 0 };
+							self.retries++;
+							setTimeout(() => resolve(refreshAccountState.call(self, accountId)), self.retries * 30000);
+						} else {
+							reject(err);
+						}
+						return Homey.error(err);
+					}
+
+					stations.forEach(device => {
+						if (connectedDevices[device._id] && connectedDevices[device._id].accountId === accountId) {
+							updateState(connectedDevices[device._id], device);
+						}
+						if (device.modules) {
+							device.modules.forEach(module => {
+								const combinedId = device._id + module._id;
+								if (connectedDevices[combinedId] && connectedDevices[combinedId].accountId === accountId) {
+									updateState(connectedDevices[combinedId], module);
+								}
+							});
+						}
+					});
+
+					resolve();
+				});
+			} else if (Homey.app.api[accountId]) {
+				Homey.app.api[accountId].once(
+					'authenticated',
+					() => {
+						resolve(refreshAccountState.call({ retries: 0 }, accountId));
+					}
+				);
+			} else {
+				reject();
+			}
+		}).catch(err => {
+			clearTimeout(debounceTimeout[accountId]);
+			refreshDebounce[accountId] = null;
+			throw err || new Error();
+		});
+	}
+	return refreshDebounce[accountId];
+}
+
+// dynamically generate capability get functions
+Object.keys(CAPABILITY_MAP).forEach(type => {
+	CAPABILITY_MAP[type].forEach(capability => {
+		if (capability.id) {
+			module.exports.capabilities[capability.id] = {
+				get: getState.bind(null, capability.id),
+			};
+		}
+	});
+});
+
+module.exports.refreshState = refreshState;
+module.exports.refreshAccountState = refreshAccountState;
+

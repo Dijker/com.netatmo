@@ -1,7 +1,11 @@
 {
 	"pair": {
 		"start": {
-			"title": "Log in to your NetAtmo account"
-		}
+			"title": "Select or connect a new NetAtmo account",
+			"login": "Login to your account"
+		},
+		"add_account": "Add new account...",
+		"delete_account": "Delete this account?",
+		"error": "Something went wrong, please try again."
 	}
 }

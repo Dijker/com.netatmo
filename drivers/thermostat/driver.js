@@ -28,18 +28,17 @@ const CAPABILITY_MAP = {
 
 function init(devices, callback) {
 	devices.forEach(device => connectedDevices[device.id] = Object.assign(device, { state: {} }));
-	refreshState();
 	flow.init(module.exports);
 	callback();
 }
 
 function pair(socket) {
+	let selectedAccountId;
+
 	socket.on('start', () => {
 		Homey.log('NetAtmo pairing has started...');
 
-		if (Homey.app.authenticated) {
-			return socket.emit('authorized', true);
-		}
+		socket.emit('accounts', Homey.app.getAccountIds().map(id => ({ id, canLogout: Homey.app.canLogout(id) })));
 
 		// request an authorization url, and forward it to the front-end
 		Homey.manager('cloud').generateOAuth2Callback(
@@ -56,7 +55,8 @@ function pair(socket) {
 
 			// this function is executed when the authorization code is received (or failed to do so)
 			(err, code) => {
-				Homey.app.authenticate(err, code).then(() => {
+				Homey.app.authenticate(err, { code }).then((accountId) => {
+					selectedAccountId = accountId;
 					socket.emit('authorized', true);
 				}).catch(err => {
 					Homey.error(err);
@@ -64,15 +64,24 @@ function pair(socket) {
 				});
 			}
 		);
+
+		socket.on('select_account', accountId => {
+			selectedAccountId = accountId;
+			socket.emit('authorized', true);
+		});
+
+		socket.on('logout', accountId => {
+			Homey.app.logout(accountId);
+		});
 	});
 
 	let devicesState;
 	socket.on('list_devices', (data, callback) => {
-		Homey.app.api.getThermostatsData(
+		Homey.app.api[selectedAccountId].getThermostatsData(
 			(err, devices) => {
 				if (err) {
 					Homey.error(err);
-					return;
+					return callback(err);
 				}
 
 				devicesState = devices;
@@ -86,8 +95,8 @@ function pair(socket) {
 					device.capabilityMap = {};
 					device.modules.forEach(module => {
 						if (CAPABILITY_MAP[module.type.toLowerCase()]) {
-							const capabilitieList = CAPABILITY_MAP[module.type.toLowerCase()];
-							capabilitieList.forEach(capability => {
+							const capabilityList = CAPABILITY_MAP[module.type.toLowerCase()];
+							capabilityList.forEach(capability => {
 								if (capability.capability_id) {
 									capabilities.push(capability.capability_id);
 								}
@@ -101,6 +110,7 @@ function pair(socket) {
 						data: {
 							id: device._id,
 							capabilityMap: device.capabilityMap,
+							accountId: selectedAccountId,
 						},
 						capabilities,
 					});
@@ -125,40 +135,69 @@ function deleted(deviceInfo) {
 	delete connectedDevices[deviceInfo.id];
 }
 
+
 let refreshTimeout;
-function refreshState(callback) {
-	if (Homey.app.authenticated) {
-		Homey.app.api.getThermostatsData((err, devices) => {
-			if (err) {
-				if (!(this && this.retries && this.retries > 3)) {
-					const self = this || { retries: 0 };
-					self.retries++;
-					setTimeout(refreshState.bind(self, callback), self.retries * 30000);
-				}
-				return Homey.error(err);
-			}
+function refreshState() {
+	const accountIds = new Set(Object.keys(connectedDevices).map(deviceId => connectedDevices[deviceId].accountId));
+	clearTimeout(refreshTimeout);
+	refreshTimeout = setTimeout(refreshState, 5 * 60 * 1000);
 
-			devices.forEach(device => {
-				if (connectedDevices[device._id]) {
-					updateState(connectedDevices[device._id], device);
-				}
-			});
-
-			if (typeof callback === 'function') {
-				callback();
-			}
-		});
-		clearTimeout(refreshTimeout);
-		refreshTimeout = setTimeout(refreshState, 10 * 60 * 1000);
-	} else {
-		Homey.app.api.once('authenticated', refreshState.bind(this, callback));
-	}
+	return Promise.all(accountIds.map(accountId => refreshAccountState(accountId)));
 }
 
+const refreshDebounce = {};
+const debounceTimeout = {};
+function refreshAccountState(accountId) {
+	if (!refreshDebounce[accountId] || (this && this.retries)) {
+		clearTimeout(debounceTimeout[accountId]);
+		debounceTimeout[accountId] = setTimeout(() => refreshDebounce[accountId] = null, 10000);
+		refreshDebounce[accountId] = new Promise((resolve, reject) => {
+			if (Homey.app.api[accountId] && Homey.app.api[accountId].authenticated) {
+				Homey.app.api[accountId].getThermostatsData((err, devices) => {
+					if (err) {
+						if (!(this && this.retries && this.retries > 3)) {
+							const self = this || { retries: 0 };
+							self.retries++;
+							setTimeout(() => resolve(refreshAccountState.call(self, accountId)), self.retries * 30000);
+						} else {
+							reject(err);
+						}
+						return Homey.error(err);
+					}
+
+					devices.forEach(device => {
+						if (connectedDevices[device._id] && connectedDevices[device._id].accountId === accountId) {
+							updateState(connectedDevices[device._id], device);
+						}
+					});
+
+					resolve();
+				});
+			} else if (Homey.app.api[accountId]) {
+				Homey.app.api[accountId].once(
+					'authenticated',
+					() => {
+						resolve(refreshAccountState.call({ retries: 0 }, accountId));
+					}
+				);
+			} else {
+				reject();
+			}
+		}).catch(err => {
+			clearTimeout(debounceTimeout[accountId]);
+			refreshDebounce[accountId] = null;
+			throw err || new Error();
+		});
+	}
+	return refreshDebounce[accountId];
+}
 function updateState(device, state) {
 	state.modules.forEach(deviceModule => {
 		CAPABILITY_MAP[deviceModule.type.toLowerCase()].forEach(capability => {
-			const value = capability.location.split('.').reduce((prev, curr) => prev[curr] || {}, deviceModule);
+			const value = capability.location.split('.').reduce(
+				(prev, curr) => prev.hasOwnProperty && prev.hasOwnProperty(curr) ? prev[curr] : { _notFound: true },
+				deviceModule
+			);
 			if (device.state[capability.id] !== value) {
 				device.state[capability.id] = value;
 				module.exports.realtime(device, capability.id, value);
@@ -169,7 +208,19 @@ function updateState(device, state) {
 
 function getState(capability, deviceInfo, callback) {
 	if (!connectedDevices[deviceInfo.id] || connectedDevices[deviceInfo.id].state[capability] === undefined) {
-		refreshState(getState.bind(null, capability, deviceInfo, callback));
+		if (
+			(connectedDevices[deviceInfo.id] && Object.keys(connectedDevices[deviceInfo.id].state).length) ||
+			(this && this.retries > 3)
+		) {
+			return callback(new Error('Could not get data for device'));
+		}
+		const self = this && this.retries ? this : { retries: 0 };
+		self.retries++;
+		refreshAccountState(deviceInfo.accountId)
+			.then(getState.bind(self, capability, deviceInfo, callback))
+			.catch(err => {
+				callback(err || true);
+			});
 	} else {
 		callback(null, connectedDevices[deviceInfo.id].state[capability]);
 	}
@@ -199,7 +250,7 @@ function setMode(capability, deviceInfo, mode, options, callback) {
 	options = options || {};
 
 	const device = connectedDevices[deviceInfo.id];
-	Homey.app.api.setThermpoint(
+	Homey.app.api[device.accountId].setThermpoint(
 		{
 			device_id: device.id,
 			module_id: device.capabilityMap[capability],
@@ -240,7 +291,7 @@ function setSchedule(capability, deviceInfo, scheduleId, callback) {
 		(err, schedule) => {
 			if (err) return callback('Could not find schedule');
 
-			Homey.app.api.switchSchedule(
+			Homey.app.api[device.accountId].switchSchedule(
 				{
 					device_id: device.id,
 					module_id: device.capabilityMap[capability],
@@ -256,10 +307,17 @@ function setSchedule(capability, deviceInfo, scheduleId, callback) {
 	);
 }
 
+function getConnectedDevicesForAccount(accountId) {
+	return Object.keys(connectedDevices).filter(deviceId => connectedDevices[deviceId].accountId === accountId);
+}
+
 module.exports = {
 	init,
 	pair,
 	deleted,
+	refreshState,
+	refreshAccountState,
+	getConnectedDevicesForAccount,
 	capabilities: {
 		measure_temperature: {
 			get: getState.bind(null, 'measure_temperature'),
