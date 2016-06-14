@@ -1,6 +1,7 @@
 'use strict';
 
-const connectedDevices = {};
+const deviceMap = new Map();
+const state = new Map();
 
 const CAPABILITY_MAP = {
 	temperature: [{
@@ -49,7 +50,10 @@ const CAPABILITY_MAP = {
 
 module.exports = {
 	init(deviceData, callback) {
-		deviceData.forEach(device => connectedDevices[device.id] = Object.assign(device, { state: {} }));
+		deviceData.forEach(device => {
+			deviceMap.set(device.id, device);
+			state.set(device.id, new Map());
+		});
 		refreshState();
 		// we're ready
 		callback();
@@ -58,7 +62,7 @@ module.exports = {
 		// below this is automatically generated
 	},
 	deleted(deviceInfo) {
-		delete connectedDevices[deviceInfo.id];
+		deviceMap.delete(deviceInfo.id);
 	},
 	pair(socket) {
 		let selectedAccountId;
@@ -114,7 +118,7 @@ module.exports = {
 
 				// get station data
 				devices.forEach(device => {
-					if (!connectedDevices[device._id]) {
+					if (!deviceMap.has(device._id)) {
 						const capabilities = [];
 
 						device.data_type.forEach(dataTypeItem => {
@@ -138,7 +142,7 @@ module.exports = {
 					// get module data
 					if (device.modules !== undefined) {
 						device.modules.forEach(module => {
-							if (connectedDevices[device._id + module._id]) return;
+							if (deviceMap.has(device._id + module._id)) return;
 
 							const capabilities = [];
 
@@ -169,17 +173,18 @@ module.exports = {
 		});
 
 		socket.on('add_device', (device, callback) => {
-			connectedDevices[device.data.id] = Object.assign(device.data, { state: {} });
+			deviceMap.set(device.data.id, device.data);
+			state.set(device.data.id, new Map());
 			if (devicesState) {
-				let state = devicesState.find(deviceState => deviceState._id === device.data.deviceId);
+				let deviceState = devicesState.find(deviceStateCache => deviceStateCache._id === device.data.deviceId);
 				if (device.data.moduleId) {
-					if (!(state && state.modules)) return refreshAccountState(device.data.accountId);
-					state = state.modules.find(moduleState => moduleState._id === device.data.moduleId);
+					if (!(deviceState && deviceState.modules)) return refreshAccountState(device.data.accountId);
+					deviceState = deviceState.modules.find(moduleState => moduleState._id === device.data.moduleId);
 				}
-				if (state) {
+				if (deviceState) {
 					updateState(
-						connectedDevices[device.data.id],
-						state
+						deviceMap.get(device.data.id),
+						deviceState
 					);
 				}
 			} else {
@@ -189,14 +194,20 @@ module.exports = {
 		});
 	},
 	getConnectedDevicesForAccount(accountId) {
-		return Object.keys(connectedDevices).filter(deviceId => connectedDevices[deviceId].accountId === accountId);
+		const result = [];
+		deviceMap.forEach(device => {
+			if (device.accountId === accountId) {
+				result.push(device);
+			}
+		});
+		return result;
 	},
 };
 
 function getState(capability, deviceInfo, callback) {
-	if (!connectedDevices[deviceInfo.id] || connectedDevices[deviceInfo.id].state[capability] === undefined) {
+	if (!deviceMap.has(deviceInfo.id) || !state.get(deviceInfo.id).has(capability)) {
 		if (
-			(connectedDevices[deviceInfo.id] && Object.keys(connectedDevices[deviceInfo.id].state).length) ||
+			(deviceMap.has(deviceInfo.id) && state.get(deviceInfo.id).size) ||
 			(this && this.retries > 3)
 		) {
 			return callback(new Error('Could not get data for device'));
@@ -209,20 +220,20 @@ function getState(capability, deviceInfo, callback) {
 				callback(err || true);
 			});
 	} else {
-		callback(null, connectedDevices[deviceInfo.id].state[capability]);
+		callback(null, state.get(deviceInfo.id).get(capability));
 	}
 }
 
-function updateState(device, state) {
-	state.data_type.forEach(dataType => {
+function updateState(device, newState) {
+	newState.data_type.forEach(dataType => {
 		CAPABILITY_MAP[dataType.toLowerCase()].forEach(capability => {
 			const value = capability.location.split('.').reduce(
 				(prev, curr) => prev.hasOwnProperty && prev.hasOwnProperty(curr) ? prev[curr] : { _notFound: true },
-				state
+				newState
 			);
-			if (!value._notFound && device.state[capability.id] !== value) {
-				device.state[capability.id] = value;
-				module.exports.realtime(device, capability.id, value);
+			if (!value._notFound && state.get(device.id).get(capability.id) !== value) {
+				state.get(device.id).set(capability.id, value);
+				module.exports.realtime(deviceMap.get(device.id), capability.id, value);
 			}
 		});
 	});
@@ -230,7 +241,8 @@ function updateState(device, state) {
 
 let refreshTimeout;
 function refreshState() {
-	const accountIds = new Set(Object.keys(connectedDevices).map(deviceId => connectedDevices[deviceId].accountId));
+	const accountIds = new Set();
+	deviceMap.forEach(device => accountIds.add(device.accountId));
 	clearTimeout(refreshTimeout);
 	refreshTimeout = setTimeout(refreshState, 5 * 60 * 1000);
 
@@ -258,14 +270,14 @@ function refreshAccountState(accountId) {
 					}
 
 					stations.forEach(device => {
-						if (connectedDevices[device._id] && connectedDevices[device._id].accountId === accountId) {
-							updateState(connectedDevices[device._id], device);
+						if (deviceMap.has(device._id) && deviceMap.get(device._id).accountId === accountId) {
+							updateState(deviceMap.get(device._id), device);
 						}
 						if (device.modules) {
 							device.modules.forEach(module => {
 								const combinedId = device._id + module._id;
-								if (connectedDevices[combinedId] && connectedDevices[combinedId].accountId === accountId) {
-									updateState(connectedDevices[combinedId], module);
+								if (deviceMap.get(combinedId) && deviceMap.get(combinedId).accountId === accountId) {
+									updateState(deviceMap.get(combinedId), module);
 								}
 							});
 						}

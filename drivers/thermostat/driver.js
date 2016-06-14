@@ -2,7 +2,8 @@
 
 const flow = require('./flow');
 
-const connectedDevices = {};
+const deviceMap = new Map();
+const state = new Map();
 const CAPABILITY_MAP = {
 	natherm1: [
 		{
@@ -26,8 +27,11 @@ const CAPABILITY_MAP = {
 	],
 };
 
-function init(devices, callback) {
-	devices.forEach(device => connectedDevices[device.id] = Object.assign(device, { state: {} }));
+function init(knownDevices, callback) {
+	knownDevices.forEach(device => {
+		deviceMap.set(device.id, device);
+		state.set(device.id, new Map());
+	});
 	flow.init(module.exports);
 	refreshState();
 	callback();
@@ -89,7 +93,7 @@ function pair(socket) {
 				const result = [];
 
 				devices.forEach(device => {
-					if (connectedDevices[device._id]) return;
+					if (deviceMap.has(device._id)) return;
 
 					const capabilities = [];
 
@@ -122,10 +126,11 @@ function pair(socket) {
 	});
 
 	socket.on('add_device', (device) => {
-		connectedDevices[device.data.id] = Object.assign(device.data, { state: {} });
+		deviceMap.set(device.data.id, device.data);
+		state.set(device.data.id, new Map());
 		if (devicesState) {
 			updateState(
-				connectedDevices[device.data.id],
+				deviceMap.get(device.data.id),
 				devicesState.find(deviceState => deviceState._id === device.data.id)
 			);
 		}
@@ -133,13 +138,14 @@ function pair(socket) {
 }
 
 function deleted(deviceInfo) {
-	delete connectedDevices[deviceInfo.id];
+	deviceMap.delete(deviceInfo.id);
 }
 
 
 let refreshTimeout;
 function refreshState() {
-	const accountIds = new Set(Object.keys(connectedDevices).map(deviceId => connectedDevices[deviceId].accountId));
+	const accountIds = new Set();
+	deviceMap.forEach(device => accountIds.add(device.accountId));
 	clearTimeout(refreshTimeout);
 	refreshTimeout = setTimeout(refreshState, 5 * 60 * 1000);
 
@@ -167,8 +173,8 @@ function refreshAccountState(accountId) {
 					}
 
 					devices.forEach(device => {
-						if (connectedDevices[device._id] && connectedDevices[device._id].accountId === accountId) {
-							updateState(connectedDevices[device._id], device);
+						if (deviceMap.has(device._id) && deviceMap.get(device._id).accountId === accountId) {
+							updateState(deviceMap.get(device._id), device);
 						}
 					});
 
@@ -193,25 +199,25 @@ function refreshAccountState(accountId) {
 	return refreshDebounce[accountId];
 }
 
-function updateState(device, state) {
-	state.modules.forEach(deviceModule => {
+function updateState(device, newState) {
+	newState.modules.forEach(deviceModule => {
 		CAPABILITY_MAP[deviceModule.type.toLowerCase()].forEach(capability => {
 			const value = capability.location.split('.').reduce(
 				(prev, curr) => prev.hasOwnProperty && prev.hasOwnProperty(curr) ? prev[curr] : { _notFound: true },
 				deviceModule
 			);
-			if (device.state[capability.id] !== value) {
-				device.state[capability.id] = value;
-				module.exports.realtime(device, capability.id, value);
+			if (!value._notFound && state.get(device.id).get(capability.id) !== value) {
+				state.get(device.id).set(capability.id, value);
+				module.exports.realtime(deviceMap.get(device.id), capability.id, value);
 			}
 		});
 	});
 }
 
 function getState(capability, deviceInfo, callback) {
-	if (!connectedDevices[deviceInfo.id] || connectedDevices[deviceInfo.id].state[capability] === undefined) {
+	if (!deviceMap.has(deviceInfo.id) || !state.get(deviceInfo.id).has(capability)) {
 		if (
-			(connectedDevices[deviceInfo.id] && Object.keys(connectedDevices[deviceInfo.id].state).length) ||
+			(deviceMap.has(deviceInfo.id) && state.get(deviceInfo.id).size) ||
 			(this && this.retries > 3)
 		) {
 			return callback(new Error('Could not get data for device'));
@@ -224,21 +230,20 @@ function getState(capability, deviceInfo, callback) {
 				callback(err || true);
 			});
 	} else {
-		callback(null, connectedDevices[deviceInfo.id].state[capability]);
+		callback(null, state.get(deviceInfo.id).get(capability));
 	}
 }
 
 function setTemperature(capability, deviceInfo, temperature, callback) {
-	const device = connectedDevices[deviceInfo.id];
-	setMode(capability, deviceInfo, 'manual', { endTime: Math.floor(Date.now() / 1000) + 2 * 60 * 60, temp: temperature },
+	setMode('mode', deviceInfo, 'manual', { endTime: Math.floor(Date.now() / 1000) + 2 * 60 * 60, temp: temperature },
 		err => {
 			callback(err, !err);
 
 			if (err) return Homey.error(err);
 
-			if (device.state[capability] !== temperature) {
-				device.state[capability] = temperature;
-				module.exports.realtime(device, capability, temperature);
+			if (state.get(deviceInfo.id).get(capability) !== temperature) {
+				state.get(deviceInfo.id).set(capability, temperature);
+				module.exports.realtime(deviceMap.get(deviceInfo.id), capability, temperature);
 			}
 		}
 	);
@@ -251,7 +256,7 @@ function setMode(capability, deviceInfo, mode, options, callback) {
 	}
 	options = options || {};
 
-	const device = connectedDevices[deviceInfo.id];
+	const device = deviceMap.get(deviceInfo.id);
 	Homey.app.api[device.accountId].setThermpoint(
 		{
 			device_id: device.id,
@@ -265,9 +270,9 @@ function setMode(capability, deviceInfo, mode, options, callback) {
 
 			if (err) return Homey.error(err);
 
-			if (device.state.mode !== mode) {
-				device.state.mode = mode;
-				module.exports.realtime(device, 'mode', mode);
+			if (state.get(deviceInfo.id).get(capability) !== mode) {
+				state.get(deviceInfo.id).set(capability, mode);
+				module.exports.realtime(device, capability, mode);
 			}
 		}
 	);
@@ -288,7 +293,7 @@ function getSchedule(capability, deviceInfo, scheduleId, callback) {
 }
 
 function setSchedule(capability, deviceInfo, scheduleId, callback) {
-	const device = connectedDevices[deviceInfo.id];
+	const device = deviceMap.get(deviceInfo.id);
 	getSchedule(capability, deviceInfo, scheduleId.program_id || scheduleId,
 		(err, schedule) => {
 			if (err) return callback('Could not find schedule');
@@ -310,7 +315,13 @@ function setSchedule(capability, deviceInfo, scheduleId, callback) {
 }
 
 function getConnectedDevicesForAccount(accountId) {
-	return Object.keys(connectedDevices).filter(deviceId => connectedDevices[deviceId].accountId === accountId);
+	const result = [];
+	deviceMap.forEach(device => {
+		if (device.accountId === accountId) {
+			result.push(device);
+		}
+	});
+	return result;
 }
 
 module.exports = {

@@ -74,8 +74,8 @@
 				"nl": "Thermostaat"
 			},
 			"images": {
-				"large": "./drivers/thermostat/assets/images/large.jpg",
-				"small": "./drivers/thermostat/assets/images/small.jpg"
+				"large": "./drivers/thermostat/assets/images/large.png",
+				"small": "./drivers/thermostat/assets/images/small.png"
 			},
 			"class": "thermostat",
 			"capabilities": [
