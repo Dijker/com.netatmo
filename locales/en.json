@@ -7,5 +7,8 @@
 		"add_account": "Add new account...",
 		"delete_account": "Delete this account?",
 		"error": "Something went wrong, please try again."
+	},
+	"update": {
+		"incompatible": "Update incompatible with old device configuration, please remove this device and pair it again."
 	}
 }
