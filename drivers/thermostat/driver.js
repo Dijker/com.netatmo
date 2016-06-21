@@ -203,7 +203,7 @@ function updateState(device, newState) {
 	newState.modules.forEach(deviceModule => {
 		CAPABILITY_MAP[deviceModule.type.toLowerCase()].forEach(capability => {
 			const value = capability.location.split('.').reduce(
-				(prev, curr) => prev.hasOwnProperty && prev.hasOwnProperty(curr) ? prev[curr] : { _notFound: true },
+				(prev, curr) => (prev.hasOwnProperty && prev.hasOwnProperty(curr) ? prev[curr] : { _notFound: true }),
 				deviceModule
 			);
 			if (!value._notFound && state.get(device.id).get(capability.id) !== value) {

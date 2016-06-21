@@ -51,6 +51,11 @@ const CAPABILITY_MAP = {
 module.exports = {
 	init(deviceData, callback) {
 		deviceData.forEach(device => {
+			// Check if device is of the old data type
+			if (!device.hasOwnProperty('accountId')) {
+				module.exports.setUnavailable(device, __('update.incompatible'));
+				return;
+			}
 			deviceMap.set(device.id, device);
 			state.set(device.id, new Map());
 		});
@@ -228,7 +233,7 @@ function updateState(device, newState) {
 	newState.data_type.forEach(dataType => {
 		CAPABILITY_MAP[dataType.toLowerCase()].forEach(capability => {
 			const value = capability.location.split('.').reduce(
-				(prev, curr) => prev.hasOwnProperty && prev.hasOwnProperty(curr) ? prev[curr] : { _notFound: true },
+				(prev, curr) => (prev.hasOwnProperty && prev.hasOwnProperty(curr) ? prev[curr] : { _notFound: true }),
 				newState
 			);
 			if (!value._notFound && state.get(device.id).get(capability.id) !== value) {
