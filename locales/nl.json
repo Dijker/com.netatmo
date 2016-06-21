@@ -7,5 +7,8 @@
 		"add_account": "Voeg nieuw account toe...",
 		"delete_account": "Verwijder deze account?",
 		"error": "Er is iets fout gegaan, probeer aub opnieuw."
+	},
+	"update": {
+		"incompatible": "Update is niet compatibel met de reeds toegevoegde apparaten. Verwijder deze en voeg ze opnieuw toe aub."
 	}
 }
