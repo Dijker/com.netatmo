@@ -65,6 +65,15 @@ function authenticate(err, auth) {
 
 					const accountId = user.mail;
 
+					const refreshDriverState = (driverName) => {
+						const driver = Homey.manager('drivers').getDriver(driverName);
+						if (!driver) {
+							setTimeout(refreshDriverState.bind(driverName), 1000);
+						} else {
+							Homey.manager('drivers').getDriver(driverName).refreshAccountState(accountId);
+						}
+					};
+
 					updateSettings(accountId, 'access_token', accessToken);
 					updateSettings(accountId, 'refresh_token', refreshToken);
 
@@ -74,9 +83,8 @@ function authenticate(err, auth) {
 					api.on('refresh_token', updateSettings.bind(null, accountId, 'refresh_token'));
 					api.on('authenticated', () => module.exports.api[accountId].authenticated = true);
 					api.on('error', err => Homey.error('Error for account:', accountId, err, err.stack));
-					DRIVER_NAMES.forEach(
-						driverName => Homey.manager('drivers').getDriver(driverName).refreshAccountState(accountId)
-					);
+
+					DRIVER_NAMES.forEach(refreshDriverState);
 
 					resolve(accountId, api);
 				});
@@ -97,9 +105,11 @@ function updateSettings(accountId, code, value) {
 
 function canLogout(accountId) {
 	return DRIVER_NAMES.reduce(
-		(result, driverName) =>
-			result.concat(Homey.manager('drivers').getDriver(driverName).getConnectedDevicesForAccount(accountId))
-		, []).length === 0;
+			(result, driverName) =>
+				result.concat(Homey.manager('drivers').getDriver(driverName).getConnectedDevicesForAccount(accountId))
+			,
+			[]
+		).length === 0;
 }
 
 function logout(accountId) {
