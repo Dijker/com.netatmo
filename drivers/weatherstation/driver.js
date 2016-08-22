@@ -238,7 +238,7 @@ function updateState(device, newState) {
 			);
 			if (!value._notFound && state.get(device.id).get(capability.id) !== value) {
 				state.get(device.id).set(capability.id, value);
-				module.exports.realtime(value, capability.id, value);
+				module.exports.realtime(deviceMap.get(device.id), capability.id, value);
 			}
 		});
 	});
