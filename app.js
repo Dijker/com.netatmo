@@ -1,6 +1,7 @@
 'use strict';
 
 const Netatmo = require('netatmo-homey');
+const logger = require('homey-log').Log;
 
 module.exports.API_URL = 'https://api.netatmo.net';
 const REDIRECT_URI = module.exports.REDIRECT_URI = 'https://callback.athom.com/oauth2/callback/';
@@ -23,7 +24,7 @@ function init() {
 		Object.keys(accounts).forEach(accountId => {
 			module.exports.api[accountId] = {};
 			if (accounts[accountId].access_token) {
-				authenticate(
+				module.exports.api[accountId].authenticatePromise = authenticate(
 					null,
 					{
 						access_token: accounts[accountId].access_token,
@@ -33,6 +34,15 @@ function init() {
 			}
 		});
 	}
+}
+
+function getApi(accountId) {
+	if (!module.exports.api[accountId]) {
+		return Promise.reject(new Error('No account exists with that id'));
+	} else if (module.exports.api[accountId].authenticatePromise) {
+		return module.exports.api[accountId].authenticatePromise;
+	}
+	return Promise.resolve(module.exports.api[accountId]);
 }
 
 function getAccountIds() {
@@ -50,8 +60,8 @@ function authenticate(err, auth) {
 		let accessToken;
 		let refreshToken;
 		const api = new Netatmo();
-		api.once('access_token', newAccessToken => accessToken = newAccessToken);
-		api.once('refresh_token', newRefreshToken => refreshToken = newRefreshToken);
+		api.on('access_token', newAccessToken => accessToken = newAccessToken);
+		api.on('refresh_token', newRefreshToken => refreshToken = newRefreshToken);
 		api.once('error', err => {
 			reject(err);
 			Homey.error(err, err.stack);
@@ -59,7 +69,9 @@ function authenticate(err, auth) {
 
 		api.authenticate(
 			Object.assign({}, authConstants, auth),
-			() => {
+			(err) => {
+				if (err) return reject(err);
+
 				api.getUser((err, user) => {
 					if (err) return reject(err);
 
@@ -79,14 +91,14 @@ function authenticate(err, auth) {
 
 					module.exports.api[accountId] = api;
 					module.exports.api[accountId].authenticated = true;
+					module.exports.api[accountId].accountId = accountId;
 					api.on('access_token', updateSettings.bind(null, accountId, 'access_token'));
 					api.on('refresh_token', updateSettings.bind(null, accountId, 'refresh_token'));
-					api.on('authenticated', () => module.exports.api[accountId].authenticated = true);
 					api.on('error', err => Homey.error('Error for account:', accountId, err, err.stack));
 
 					DRIVER_NAMES.forEach(refreshDriverState);
 
-					resolve(accountId, api);
+					resolve(api);
 				});
 			}
 		);
@@ -123,6 +135,7 @@ function logout(accountId) {
 }
 
 module.exports.init = init;
+module.exports.getApi = getApi;
 module.exports.getAccountIds = getAccountIds;
 module.exports.authenticate = authenticate;
 module.exports.logout = logout;

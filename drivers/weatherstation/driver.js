@@ -90,8 +90,8 @@ module.exports = {
 
 				// this function is executed when the authorization code is received (or failed to do so)
 				(err, code) => {
-					Homey.app.authenticate(err, { code }).then((accountId) => {
-						selectedAccountId = accountId;
+					Homey.app.authenticate(err, { code }).then((api) => {
+						selectedAccountId = api.accountId;
 						socket.emit('authorized', true);
 					}).catch(err => {
 						Homey.error(err);
@@ -112,7 +112,7 @@ module.exports = {
 
 		let devicesState;
 		socket.on('list_devices', (data, callback) => {
-			Homey.app.api[selectedAccountId].getStationsData((err, devices) => {
+			Homey.app.getApi(selectedAccountId).then(api => api.getStationsData((err, devices) => {
 				if (err) {
 					Homey.error(err);
 					return callback(err);
@@ -174,7 +174,7 @@ module.exports = {
 					}
 				});
 				callback(null, deviceList);
-			});
+			})).catch(err => callback(err));
 		});
 
 		socket.on('add_device', (device, callback) => {
@@ -261,8 +261,8 @@ function refreshAccountState(accountId) {
 		clearTimeout(debounceTimeout[accountId]);
 		debounceTimeout[accountId] = setTimeout(() => refreshDebounce[accountId] = null, 10000);
 		refreshDebounce[accountId] = new Promise((resolve, reject) => {
-			if (Homey.app.api[accountId] && Homey.app.api[accountId].authenticated) {
-				Homey.app.api[accountId].getStationsData((err, stations) => {
+			if (Homey.app.api[accountId]) {
+				Homey.app.getApi(accountId).then(api => api.getStationsData((err, stations) => {
 					if (err) {
 						if (!(this && this.retries && this.retries > 3)) {
 							const self = this || { retries: 0 };
@@ -289,14 +289,7 @@ function refreshAccountState(accountId) {
 					});
 
 					resolve();
-				});
-			} else if (Homey.app.api[accountId]) {
-				Homey.app.api[accountId].once(
-					'authenticated',
-					() => {
-						resolve(refreshAccountState.call({ retries: 0 }, accountId));
-					}
-				);
+				})).catch(reject);
 			} else {
 				reject();
 			}

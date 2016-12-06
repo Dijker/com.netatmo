@@ -60,8 +60,8 @@ function pair(socket) {
 
 			// this function is executed when the authorization code is received (or failed to do so)
 			(err, code) => {
-				Homey.app.authenticate(err, { code }).then((accountId) => {
-					selectedAccountId = accountId;
+				Homey.app.authenticate(err, { code }).then((api) => {
+					selectedAccountId = api.accountId;
 					socket.emit('authorized', true);
 				}).catch(err => {
 					Homey.error(err);
@@ -82,7 +82,7 @@ function pair(socket) {
 
 	let devicesState;
 	socket.on('list_devices', (data, callback) => {
-		Homey.app.api[selectedAccountId].getThermostatsData(
+		Homey.app.getApi(selectedAccountId).then(api => api.getThermostatsData(
 			(err, devices) => {
 				if (err) {
 					Homey.error(err);
@@ -122,7 +122,7 @@ function pair(socket) {
 				});
 
 				callback(null, result);
-			});
+			})).catch(callback);
 	});
 
 	socket.on('add_device', (device) => {
@@ -159,8 +159,8 @@ function refreshAccountState(accountId) {
 		clearTimeout(debounceTimeout[accountId]);
 		debounceTimeout[accountId] = setTimeout(() => refreshDebounce[accountId] = null, 10000);
 		refreshDebounce[accountId] = new Promise((resolve, reject) => {
-			if (Homey.app.api[accountId] && Homey.app.api[accountId].authenticated) {
-				Homey.app.api[accountId].getThermostatsData((err, devices) => {
+			if (Homey.app.api[accountId]) {
+				Homey.app.getApi(accountId).then(api => api.getThermostatsData((err, devices) => {
 					if (err) {
 						if (!(this && this.retries && this.retries > 3)) {
 							const self = this || { retries: 0 };
@@ -179,14 +179,7 @@ function refreshAccountState(accountId) {
 					});
 
 					resolve();
-				});
-			} else if (Homey.app.api[accountId]) {
-				Homey.app.api[accountId].once(
-					'authenticated',
-					() => {
-						resolve(refreshAccountState.call({ retries: 0 }, accountId));
-					}
-				);
+				})).catch(reject);
 			} else {
 				reject();
 			}
@@ -257,7 +250,7 @@ function setMode(capability, deviceInfo, mode, options, callback) {
 	options = options || {};
 
 	const device = deviceMap.get(deviceInfo.id);
-	Homey.app.api[device.accountId].setThermpoint(
+	Homey.app.getApi(device.accountId).then(api => api.setThermpoint(
 		{
 			device_id: device.id,
 			module_id: device.capabilityMap[capability],
@@ -275,7 +268,7 @@ function setMode(capability, deviceInfo, mode, options, callback) {
 				module.exports.realtime(device, capability, mode);
 			}
 		}
-	);
+	)).catch(callback);
 }
 
 function getSchedule(capability, deviceInfo, scheduleId, callback) {
@@ -298,7 +291,7 @@ function setSchedule(capability, deviceInfo, scheduleId, callback) {
 		(err, schedule) => {
 			if (err) return callback('Could not find schedule');
 
-			Homey.app.api[device.accountId].switchSchedule(
+			Homey.app.getApi(device.accountId).then(api => api.switchSchedule(
 				{
 					device_id: device.id,
 					module_id: device.capabilityMap[capability],
@@ -309,7 +302,7 @@ function setSchedule(capability, deviceInfo, scheduleId, callback) {
 
 					if (err) return Homey.error(err);
 				}
-			);
+			)).catch(callback);
 		}
 	);
 }
