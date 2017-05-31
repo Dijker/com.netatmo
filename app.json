@@ -1,6 +1,6 @@
 {
 	"id": "com.netatmo",
-	"version": "2.0.5",
+	"version": "2.0.6",
 	"compatibility": ">=0.8.30",
 	"category": "climate",
 	"name": {
@@ -19,6 +19,10 @@
 				"name": "Marco Frijmann",
 				"website": "http://www.frijmann.nl",
 				"email": "marco@frijmann.nl"
+			},
+			{
+				"name": "Remco Mengers",
+				"email": "caseda08@hotmail.com"
 			}
 		]
 	},
@@ -39,17 +43,40 @@
 			},
 			"class": "sensor",
 			"capabilities": [
+				"measure_battery",
 				"measure_temperature",
 				"measure_co2",
 				"measure_humidity",
 				"measure_pressure",
 				"measure_noise",
-				"measure_rain",
+				"measure_rain.now",
+				"measure_rain.1h",
+				"measure_rain.24h",
 				"measure_wind_strength",
 				"measure_wind_angle",
 				"measure_gust_strength",
 				"measure_gust_angle"
 			],
+			"capabilitiesOptions": {
+				"measure_rain.now": {
+					"title": {
+						"en": "Rain now",
+						"nl": "Regen nu"
+					}
+				},
+				"measure_rain.1h": {
+					"title": {
+						"en": "mm/hour",
+						"nl": "mm/uur"
+					}
+				},
+				"measure_rain.24h": {
+					"title": {
+						"en": "Today",
+						"nl": "Vandaag"
+					}
+				}
+    	},
 			"pair": [
 				{
 					"id": "start"
@@ -169,6 +196,82 @@
 							"en": "My Program",
 							"nl": "Mijn Programma"
 						}
+					}
+				]
+			}
+		],
+		"triggers": [
+			{
+				"id": "rain_now_changed",
+				"title": {
+					"en": "The rain (now) has changed",
+					"nl": "De regen (nu) is veranderd"
+				},
+				"tokens": [
+					{
+						"name": "rain",
+						"type": "number",
+						"title": {
+							"en": "Rain",
+							"en": "Regen"
+						},
+						"example": 1
+					}
+				],
+				"args": [
+					{
+						"name": "device",
+						"type": "device",
+						"filter": "driver_id=weatherstation&capabilities=measure_rain.now"
+					}
+				]
+			},
+			{
+				"id": "rain_hour_changed",
+				"title": {
+					"en": "The rain/hour has changed",
+					"nl": "De regen/uur is veranderd"
+				},
+				"tokens": [
+					{
+						"name": "hour",
+						"type": "number",
+						"title": {
+							"en": "mm/h",
+							"nl": "mm/u"
+						},
+						"example": 3
+					}
+				],
+				"args": [
+					{
+						"name": "device",
+						"type": "device",
+						"filter": "driver_id=weatherstation&capabilities=measure_rain.1h"
+					}
+				]
+			},
+			{
+				"id": "rain_day_changed",
+				"title": {
+					"en": "The cumulated rain has changed",
+					"nl": "De gecumuleerde regen is veranderd"
+				},
+				"tokens": [
+					{
+						"name": "today",
+						"type": "number",
+						"title": {
+							"en": "mm"
+						},
+						"example": 5
+					}
+				],
+				"args": [
+					{
+						"name": "device",
+						"type": "device",
+						"filter": "driver_id=weatherstation&capabilities=measure_rain.24h"
 					}
 				]
 			}
