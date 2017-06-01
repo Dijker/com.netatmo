@@ -30,7 +30,7 @@ There will be 3 "Rain" global tokens until that [issue](https://github.com/athom
 For now, the order is always the same:  
 * Top Rain: Rain now
 * Middle Rain: mm/hour
-* Bottom Rain: Cummulated today
+* Bottom Rain: Cumulated today
 
 Support to be added:
 - NetAtmo Welcome:
