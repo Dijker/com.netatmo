@@ -31,6 +31,7 @@ For now, the order is always the same:
 * Top Rain: Rain now
 * Middle Rain: mm/hour
 * Bottom Rain: Cumulated today
+When your device does not display the newly added capabilities (Battery level, Rain last hour and Rain last 24 hours) you will need to re-pair the device by removing it and adding it again.
 
 Support to be added:
 - NetAtmo Welcome:
