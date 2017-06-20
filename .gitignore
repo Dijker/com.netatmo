@@ -2,3 +2,4 @@
 env.json
 .idea
 /node_modules/moment/min/
+.DS_STORE

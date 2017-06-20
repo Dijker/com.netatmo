@@ -62,7 +62,7 @@ const CAPABILITY_MAP = {
 	],
 };
 
-module.exports = {
+const self = module.exports = {
 	init(deviceData, callback) {
 		deviceData.forEach(device => {
 			// Check if device is of the old data type
@@ -310,6 +310,7 @@ function refreshAccountState(accountId) {
 							device.modules.forEach(module => {
 								const combinedId = device._id + module._id;
 								if (deviceMap.get(combinedId) && deviceMap.get(combinedId).accountId === accountId) {
+									self.setAvailable(deviceMap.get(combinedId));
 									updateState(deviceMap.get(combinedId), module);
 								}
 							});
@@ -324,6 +325,11 @@ function refreshAccountState(accountId) {
 		}).catch(err => {
 			clearTimeout(debounceTimeout[accountId]);
 			refreshDebounce[accountId] = null;
+			deviceMap.forEach(device => {
+				if (device.accountId === accountId) {
+					self.setUnavailable(device, __('error.authentication_failed'));
+				}
+			});
 			throw err || new Error();
 		});
 	}
