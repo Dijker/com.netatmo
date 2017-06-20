@@ -174,6 +174,7 @@ function refreshAccountState(accountId) {
 
 					devices.forEach(device => {
 						if (deviceMap.has(device._id) && deviceMap.get(device._id).accountId === accountId) {
+							module.exports.setAvailable(deviceMap.get(device._id));
 							updateState(deviceMap.get(device._id), device);
 						}
 					});
@@ -186,6 +187,11 @@ function refreshAccountState(accountId) {
 		}).catch(err => {
 			clearTimeout(debounceTimeout[accountId]);
 			refreshDebounce[accountId] = null;
+			deviceMap.forEach(device => {
+				if (device.accountId === accountId) {
+					module.exports.setUnavailable(device, __('error.authentication_failed'));
+				}
+			});
 			throw err || new Error();
 		});
 	}

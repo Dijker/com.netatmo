@@ -10,5 +10,8 @@
 	},
 	"update": {
 		"incompatible": "Update incompatible with old device configuration, please remove this device and pair it again."
+	},
+	"error": {
+		"authentication_failed": "Authentication failed. Please log in again by using the pair wizard."
 	}
 }
