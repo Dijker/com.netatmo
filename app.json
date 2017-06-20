@@ -49,7 +49,7 @@
 				"measure_humidity",
 				"measure_pressure",
 				"measure_noise",
-				"measure_rain.now",
+				"measure_rain",
 				"measure_rain.1h",
 				"measure_rain.24h",
 				"measure_wind_strength",
@@ -58,7 +58,7 @@
 				"measure_gust_angle"
 			],
 			"capabilitiesOptions": {
-				"measure_rain.now": {
+				"measure_rain": {
 					"title": {
 						"en": "Rain now",
 						"nl": "Regen nu"
@@ -76,7 +76,7 @@
 						"nl": "Vandaag"
 					}
 				}
-    	},
+			},
 			"pair": [
 				{
 					"id": "start"

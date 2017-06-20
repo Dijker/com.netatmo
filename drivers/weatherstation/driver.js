@@ -30,7 +30,7 @@ const CAPABILITY_MAP = {
 	}],
 	rain: [
 		{
-			id: 'measure_rain.now',
+			id: 'measure_rain',
 			location: 'dashboard_data.Rain',
 		},
 		{
@@ -67,7 +67,7 @@ const self = module.exports = {
 		deviceData.forEach(device => {
 			// Check if device is of the old data type
 			if (!device.hasOwnProperty('accountId')) {
-				module.exports.setUnavailable(device, __('update.incompatible'));
+				self.setUnavailable(device, __('update.incompatible'));
 				return;
 			}
 			deviceMap.set(device.id, device);
@@ -252,7 +252,7 @@ function updateState(device, newState) {
 		const value = newState['battery_percent'];
 		if (value && state.get(device.id).get('measure_battery') !== value) {
 			state.get(device.id).set('measure_battery', value);
-			module.exports.realtime(deviceMap.get(device.id), 'measure_battery', value);
+			self.realtime(deviceMap.get(device.id), 'measure_battery', value);
 		}
 	}
 	newState.data_type.forEach(dataType => {
@@ -262,11 +262,11 @@ function updateState(device, newState) {
 				newState
 			);
 			if (!value._notFound && state.get(device.id).get(capability.id) !== value) {
-				if (capability.id === 'measure_rain.now') Homey.manager('flow').triggerDevice('rain_now_changed', { rain: value }, null, deviceMap.get(device.id));
+				if (capability.id === 'measure_rain') Homey.manager('flow').triggerDevice('rain_now_changed', { rain: value }, null, deviceMap.get(device.id));
 				if (capability.id === 'measure_rain.1h') Homey.manager('flow').triggerDevice('rain_hour_changed', { hour: value }, null, deviceMap.get(device.id));
 				if (capability.id === 'measure_rain.24h') Homey.manager('flow').triggerDevice('rain_today_changed', { today: value }, null, deviceMap.get(device.id));
 				state.get(device.id).set(capability.id, value);
-				module.exports.realtime(deviceMap.get(device.id), capability.id, value);
+				self.realtime(deviceMap.get(device.id), capability.id, value);
 			}
 		});
 	});
