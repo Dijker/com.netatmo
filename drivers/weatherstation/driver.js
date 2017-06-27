@@ -262,9 +262,11 @@ function updateState(device, newState) {
 				newState
 			);
 			if (!value._notFound && state.get(device.id).get(capability.id) !== value) {
-				if (capability.id === 'measure_rain') Homey.manager('flow').triggerDevice('rain_now_changed', { rain: value }, null, deviceMap.get(device.id));
-				if (capability.id === 'measure_rain.1h') Homey.manager('flow').triggerDevice('rain_hour_changed', { hour: value }, null, deviceMap.get(device.id));
-				if (capability.id === 'measure_rain.24h') Homey.manager('flow').triggerDevice('rain_today_changed', { today: value }, null, deviceMap.get(device.id));
+				if (typeof state.get(device.id).get(capability.id) !== 'undefined') {
+					if (capability.id === 'measure_rain') Homey.manager('flow').triggerDevice('rain_now_changed', { rain: Math.round(value * 100) / 100 }, null, deviceMap.get(device.id));
+					if (capability.id === 'measure_rain.1h') Homey.manager('flow').triggerDevice('rain_hour_changed', { hour: Math.round(value * 100) / 100 }, null, deviceMap.get(device.id));
+					if (capability.id === 'measure_rain.24h') Homey.manager('flow').triggerDevice('rain_day_changed', { today: Math.round(value * 100) / 100 }, null, deviceMap.get(device.id));
+				}
 				state.get(device.id).set(capability.id, value);
 				self.realtime(deviceMap.get(device.id), capability.id, value);
 			}
